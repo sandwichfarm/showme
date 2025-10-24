@@ -53,6 +53,13 @@ impl Renderer {
         if config.verbose {
             eprintln!("Terminal information:");
             eprintln!("  Size: {}x{} cells", terminal.columns, terminal.rows);
+            if let Some(w) = terminal.width_pixels {
+                eprintln!("  Pixel size: {}x{}", w, terminal.height_pixels.unwrap_or(0));
+                if let Some(ratio) = terminal.cell_aspect_ratio() {
+                    eprintln!("  Cell aspect ratio: {:.3}", ratio);
+                }
+            }
+            eprintln!("  Width stretch factor: {:.3}", config.sizing.width_stretch);
             if let Some(term_name) = crate::capabilities::detect_terminal_name() {
                 eprintln!("  Detected terminal: {}", term_name);
             } else {
@@ -214,6 +221,7 @@ impl Renderer {
             pixelation: self.config.pixelation,
             use_8bit_color: self.config.use_8bit_color,
             compress_level: self.config.compress_level,
+            verbose: self.config.verbose,
         };
 
         // Handle scrolling animation mode
@@ -488,6 +496,8 @@ impl Renderer {
             }
 
             let effective_columns = chunk.len();
+
+            // Use actual terminal width for grid allocation
             let available_cells = self.terminal.columns as usize;
             let reserved_for_gaps =
                 (grid.spacing as usize).saturating_mul(effective_columns.saturating_sub(1));
@@ -515,6 +525,7 @@ impl Renderer {
                                 pixelation: self.config.pixelation,
                                 use_8bit_color: self.config.use_8bit_color,
                                 compress_level: self.config.compress_level,
+                                verbose: self.config.verbose,
                             };
                             self.backend.render(frame, options)
                         })

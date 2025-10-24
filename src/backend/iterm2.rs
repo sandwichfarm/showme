@@ -106,6 +106,8 @@ mod tests {
                     terminal: TerminalSize {
                         columns: 80,
                         rows: 24,
+                        width_pixels: None,
+                        height_pixels: None,
                     },
                     background: BackgroundStyle {
                         color: None,
@@ -115,6 +117,7 @@ mod tests {
                     pixelation: crate::config::PixelationMode::Quarter,
                     use_8bit_color: false,
                     compress_level: 1,
+                    verbose: false,
                 },
             )
             .expect("render succeeds");
