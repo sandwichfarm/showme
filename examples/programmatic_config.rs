@@ -38,7 +38,7 @@ fn main() -> terminal_media::Result<()> {
             upscale: false,
             upscale_integer: false,
             antialias: true,
-            width_stretch: 1.0,
+            width_stretch: 2.0, // Typical terminal chars are ~2x taller than wide, stretch by 2x
         },
 
         // Display options

@@ -288,7 +288,7 @@ fn display_image(path: &str) -> terminal_media::Result<()> {
             upscale: true,
             upscale_integer: false,
             antialias: true,
-            width_stretch: 1.0,
+            width_stretch: 2.0, // Auto-detected by CLI, manual for library (2.0 = typical terminal)
         },
 
         // Display options

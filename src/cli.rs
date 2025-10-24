@@ -78,9 +78,9 @@ pub struct Cli {
     #[arg(short = 'U', long = "upscale", value_name = "MODE")]
     upscale: Option<String>,
 
-    /// Width stretch factor for aspect ratio correction
-    #[arg(long = "width-stretch", value_name = "FACTOR", default_value = "1.0")]
-    width_stretch: f32,
+    /// Width stretch factor for aspect ratio correction (auto-detected if not specified)
+    #[arg(long = "width-stretch", value_name = "FACTOR")]
+    width_stretch: Option<f32>,
 
     /// Disable antialiasing when scaling images
     #[arg(short = 'a', long = "no-antialias", action = ArgAction::SetTrue)]
@@ -270,10 +270,18 @@ impl Cli {
             return Err(RimgError::other("compress level must be between 0 and 9"));
         }
 
-        // Validate width stretch
-        if self.width_stretch <= 0.0 {
-            return Err(RimgError::other("width-stretch must be positive"));
+        // Validate width stretch if provided
+        if let Some(stretch) = self.width_stretch {
+            if stretch <= 0.0 {
+                return Err(RimgError::other("width-stretch must be positive"));
+            }
         }
+
+        // Use provided width_stretch or auto-detect from terminal
+        let width_stretch = self.width_stretch.unwrap_or_else(|| {
+            use crate::capabilities::current_terminal_size;
+            current_terminal_size().recommended_width_stretch()
+        });
 
         Ok(Config {
             inputs: all_inputs,
@@ -287,7 +295,7 @@ impl Cli {
                 fit_height: self.fit_height,
                 upscale,
                 upscale_integer,
-                width_stretch: self.width_stretch,
+                width_stretch,
                 antialias: !self.no_antialias,
             },
             grid,

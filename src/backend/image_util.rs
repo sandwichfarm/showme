@@ -7,12 +7,39 @@ use crate::backend::RenderOptions;
 use crate::error::{Result, RimgError};
 use crate::image::Frame;
 
+/// Scale frame for graphics protocols (Kitty, iTerm2, Sixel)
+/// These can display high-resolution images, so we keep original resolution
+pub(crate) fn scale_frame_for_graphics(frame: &Frame, options: RenderOptions) -> (image::RgbaImage, u32, u32) {
+    let pixels = &frame.pixels;
+
+    // Calculate cell allocation (how much terminal space to use)
+    let max_width_cells = options
+        .sizing
+        .width_cells
+        .unwrap_or_else(|| pixels.width().min(options.terminal.columns as u32))
+        .max(1)
+        .min(options.terminal.columns as u32);
+
+    let max_height_cells = options
+        .sizing
+        .height_cells
+        .unwrap_or_else(|| pixels.height().min(options.terminal.rows as u32))
+        .max(1)
+        .min(options.terminal.rows as u32);
+
+    // For graphics protocols: keep original image resolution
+    // The terminal will display it crisply within the allocated cells
+    // Only downscale if user explicitly set width/height limits
+    (pixels.clone(), max_width_cells, max_height_cells)
+}
+
+/// Scale frame for Unicode backend - needs aggressive downscaling to match character blocks
 pub(crate) fn scale_frame(frame: &Frame, options: RenderOptions) -> (image::RgbaImage, u32, u32) {
     let pixels = &frame.pixels;
 
-    // Apply width stretch factor for aspect ratio correction
-    let effective_terminal_width = (options.terminal.columns as f32 / options.sizing.width_stretch) as u32;
-    let effective_terminal_width = effective_terminal_width.max(1);
+    // For graphics protocols, use full terminal width
+    // width_stretch is handled differently for unicode backends
+    let effective_terminal_width = options.terminal.columns as u32;
 
     let max_width_cells = options
         .sizing

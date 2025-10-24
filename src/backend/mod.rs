@@ -44,6 +44,7 @@ pub struct RenderOptions {
     pub pixelation: PixelationMode,
     pub use_8bit_color: bool,
     pub compress_level: u8,
+    pub verbose: bool,
 }
 
 #[derive(Debug, Clone, Copy)]

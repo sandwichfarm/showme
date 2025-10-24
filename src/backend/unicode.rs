@@ -97,8 +97,14 @@ impl UnicodeBackend {
             scale_width.min(scale_height)
         };
 
-        let mut target_width = (frame.pixels.width() as f32 * scale).round() as u32;
-        let mut target_height = (frame.pixels.height() as f32 * scale).round() as u32;
+        // Scale image, then apply width_stretch to width
+        let base_width = (frame.pixels.width() as f32 * scale).round() as u32;
+        let base_height = (frame.pixels.height() as f32 * scale).round() as u32;
+
+        // Apply width_stretch but cap at max to prevent overflow
+        let stretched_width = (base_width as f32 * sizing.width_stretch).round() as u32;
+        let mut target_width = stretched_width.min(max_width_cells);
+        let mut target_height = base_height;
 
         if target_width == 0 {
             target_width = 1;
@@ -172,7 +178,7 @@ impl UnicodeBackend {
                     .min((terminal.rows as u32).saturating_mul(2).max(1)),
             );
 
-        // For quarter blocks, target_width needs to be doubled since each cell handles 2 pixels horizontally
+        // For quarter blocks, each cell handles 2 pixels horizontally
         let mut scale_width = (max_width_cells * 2) as f32 / frame.pixels.width() as f32;
         let mut scale_height = max_height_pixels as f32 / frame.pixels.height() as f32;
 
@@ -189,8 +195,19 @@ impl UnicodeBackend {
             scale_width.min(scale_height)
         };
 
-        let mut target_width = (frame.pixels.width() as f32 * scale).round() as u32;
-        let mut target_height = (frame.pixels.height() as f32 * scale).round() as u32;
+        // Scale image, then apply width_stretch to width
+        let base_width = (frame.pixels.width() as f32 * scale).round() as u32;
+        let base_height = (frame.pixels.height() as f32 * scale).round() as u32;
+
+        // Apply width_stretch but cap at max to prevent overflow
+        let stretched_width = (base_width as f32 * sizing.width_stretch).round() as u32;
+        let mut target_width = stretched_width.min(max_width_cells * 2);
+        let mut target_height = base_height;
+
+        if options.verbose {
+            eprintln!("  [Unicode] Aspect ratio correction: {}x{} -> {}x{} (stretch={:.1}x)",
+                     base_width, base_height, target_width, target_height, sizing.width_stretch);
+        }
 
         if target_width == 0 {
             target_width = 2;

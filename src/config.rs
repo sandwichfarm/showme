@@ -125,7 +125,7 @@ impl RenderSizing {
             fit_height: false,
             upscale: false,
             upscale_integer: false,
-            width_stretch: 1.0,
+            width_stretch: 2.0, // Most terminal fonts are ~2x taller than wide, so stretch width by 2x
             antialias: true,
         }
     }

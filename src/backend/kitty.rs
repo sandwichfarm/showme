@@ -6,7 +6,8 @@ use crate::error::Result;
 use crate::image::Frame;
 use crate::tmux;
 
-const BASE64_CHUNK: usize = 4096;
+// timg uses 3072 raw bytes which encodes to 4096 base64 bytes
+const BASE64_CHUNK: usize = 3072;
 
 #[derive(Debug, Default)]
 pub struct KittyBackend;
@@ -26,6 +27,13 @@ impl KittyBackend {
         let avg_chunk = super::chunk_util::average_chunk_len(&chunks);
         let in_tmux = tmux::in_multiplexer();
 
+        // Generate unique image ID (use timestamp + random for uniqueness)
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let image_id = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u32)
+            .unwrap_or(1);
+
         for (idx, chunk) in (&chunks).into_iter().enumerate() {
             let more = idx + 1 < total;
 
@@ -33,6 +41,8 @@ impl KittyBackend {
             if idx == 0 {
                 params.push(format!("a=T"));
                 params.push(format!("f=100"));
+                params.push(format!("q=2")); // Suppress terminal feedback
+                params.push(format!("i={}", image_id)); // Unique image ID
                 params.push(format!("s={}", pixel_width));
                 params.push(format!("v={}", pixel_height));
                 params.push(format!("c={}", width_cells.max(1)));
@@ -73,9 +83,24 @@ impl Backend for KittyBackend {
     }
 
     fn render(&self, frame: &Frame, options: RenderOptions) -> Result<RenderedFrame> {
-        let (mut image, width_cells, height_cells) = scale_frame(frame, options);
+        // For Kitty graphics, don't downscale - keep original resolution
+        // Just calculate cell allocation
+        let pixels = &frame.pixels;
+
+        let width_cells = options.sizing.width_cells
+            .unwrap_or(options.terminal.columns as u32)
+            .max(1)
+            .min(options.terminal.columns as u32);
+
+        let height_cells = options.sizing.height_cells
+            .unwrap_or(options.terminal.rows as u32)
+            .max(1)
+            .min(options.terminal.rows as u32);
+
+        let mut image = pixels.clone();
         blend_transparency(&mut image, options.background);
         let png = encode_png(&image, "kitty")?;
+
         let lines = self.build_chunks(
             &png,
             width_cells,
@@ -83,6 +108,11 @@ impl Backend for KittyBackend {
             image.width(),
             image.height(),
         );
+
+        if options.verbose {
+            eprintln!("  [Kitty] Rendering {}x{} pixels in {}x{} cells",
+                     image.width(), image.height(), width_cells, height_cells);
+        }
 
         Ok(RenderedFrame {
             lines,
@@ -124,6 +154,8 @@ mod tests {
                     terminal: TerminalSize {
                         columns: 80,
                         rows: 24,
+                        width_pixels: None,
+                        height_pixels: None,
                     },
                     background: BackgroundStyle {
                         color: None,
@@ -133,6 +165,7 @@ mod tests {
                     pixelation: crate::config::PixelationMode::Quarter,
                     use_8bit_color: false,
                     compress_level: 1,
+                    verbose: false,
                 },
             )
             .expect("render succeeds");
