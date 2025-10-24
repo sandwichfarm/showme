@@ -1,0 +1,9 @@
+# Test file list
+image1.jpg
+image2.png
+
+# Comments should be ignored
+relative/path/image3.gif
+
+# Empty lines too
+/absolute/path/image4.jpg
