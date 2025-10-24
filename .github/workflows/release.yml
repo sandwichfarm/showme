@@ -32,7 +32,20 @@ jobs:
       - name: Publish to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish --token ${CARGO_REGISTRY_TOKEN}
+        run: |
+          # Try to publish, but don't fail if crate version already exists
+          if cargo publish --token ${CARGO_REGISTRY_TOKEN} 2>&1 | tee publish.log; then
+            echo "✅ Successfully published to crates.io"
+          else
+            if grep -q "already uploaded\|already exists" publish.log; then
+              echo "ℹ️  Crate version already published to crates.io, skipping..."
+              exit 0
+            else
+              echo "❌ Failed to publish to crates.io"
+              cat publish.log
+              exit 1
+            fi
+          fi
 
   build-binaries:
     name: Build ${{ matrix.target }}
