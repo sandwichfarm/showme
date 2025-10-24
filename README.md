@@ -1,5 +1,11 @@
 # terminal-media
 
+[![Crates.io](https://img.shields.io/crates/v/terminal-media.svg)](https://crates.io/crates/terminal-media)
+[![Documentation](https://docs.rs/terminal-media/badge.svg)](https://docs.rs/terminal-media)
+[![License: GPL-2.0](https://img.shields.io/badge/License-GPL--2.0-blue.svg)](LICENSE)
+[![Build Status](https://github.com/sandwichfarm/terminal-media/workflows/Release/badge.svg)](https://github.com/sandwichfarm/terminal-media/actions)
+[![Rust Version](https://img.shields.io/badge/rust-2024%2B-orange.svg)](https://www.rust-lang.org)
+
 `terminal-media` is a powerful terminal image and video viewer written in Rust. View images, videos, PDFs, and SVGs directly in your terminal without leaving your workflow.
 
 ## Table of Contents
@@ -15,6 +21,8 @@
 - [CLI Usage](#cli-usage)
 - [File Lists](#file-lists)
 - [Testing](#testing)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
 - [Licensing](#licensing)
 
 ## Features
@@ -382,6 +390,47 @@ cargo test rendering_tests
 cargo test capabilities_tests
 cargo test integration_tests
 ```
+
+## Documentation
+
+Additional documentation is available:
+
+- **[Extended Examples](docs/examples.md)** - Comprehensive tutorials and use cases for both CLI and library usage
+- **[API Documentation](https://docs.rs/terminal-media)** - Full API reference (after crates.io publication)
+- **[Library Examples](examples/)** - Working code examples in the `examples/` directory:
+  - `basic_viewer.rs` - Simple image viewer
+  - `custom_backend.rs` - Backend selection
+  - `programmatic_config.rs` - Advanced configuration
+  - `image_processing.rs` - Direct image processing
+
+Run examples with:
+```bash
+cargo run --example basic_viewer path/to/image.jpg
+```
+
+## Contributing
+
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for:
+
+- Development setup and build instructions
+- Code style guidelines and testing requirements
+- Pull request process
+- Areas looking for contributions
+
+Before submitting a pull request:
+
+```bash
+# Run tests
+cargo test
+
+# Check formatting
+cargo fmt --check
+
+# Run linter
+cargo clippy -- -D warnings
+```
+
+For questions or bug reports, please [open an issue](https://github.com/sandwichfarm/terminal-media/issues) on GitHub.
 
 ## Licensing
 
