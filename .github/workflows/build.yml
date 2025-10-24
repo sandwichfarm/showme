@@ -73,15 +73,12 @@ jobs:
           rustup target add aarch64-unknown-linux-gnu
 
       - name: Install dependencies (macOS)
-        if: matrix.os == 'macos-latest'
+        if: runner.os == 'macOS'
         run: |
           brew install ffmpeg pkg-config
 
-      - name: Install dependencies (Windows)
-        if: matrix.os == 'windows-latest'
-        run: |
-          choco install ffmpeg
-          echo "FFMPEG_DIR=C:\ProgramData\chocolatey\lib\ffmpeg\tools\ffmpeg" >> $env:GITHUB_ENV
+      # Windows: Skip ffmpeg for now (complex setup)
+      # Video feature will be disabled in build step
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -103,13 +100,21 @@ jobs:
 
       - name: Build (native)
         if: "!matrix.cross"
-        run: cargo build --release --locked --target ${{ matrix.target }}
+        run: |
+          # Build without video feature on Windows (ffmpeg setup complex)
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cargo build --release --locked --target ${{ matrix.target }} --no-default-features --features unicode,kitty,iterm2,qoi,pdf,svg
+          else
+            cargo build --release --locked --target ${{ matrix.target }}
+          fi
+        shell: bash
 
       - name: Build (cross)
         if: matrix.cross
         run: |
           cargo install cross --git https://github.com/cross-rs/cross
-          cross build --release --locked --target ${{ matrix.target }}
+          # Build without video feature for cross-compilation (ARM64 ffmpeg not readily available)
+          cross build --release --locked --target ${{ matrix.target }} --no-default-features --features unicode,kitty,iterm2,qoi,pdf,svg
 
       - name: Strip binary (Linux/macOS)
         if: matrix.os != 'windows-latest' && !matrix.cross
