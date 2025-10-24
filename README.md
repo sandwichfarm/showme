@@ -1,12 +1,12 @@
-# terminal-media
+# showme
 
-[![Crates.io](https://img.shields.io/crates/v/terminal-media.svg)](https://crates.io/crates/terminal-media)
-[![Documentation](https://docs.rs/terminal-media/badge.svg)](https://docs.rs/terminal-media)
+[![Crates.io](https://img.shields.io/crates/v/showme.svg)](https://crates.io/crates/showme)
+[![Documentation](https://docs.rs/showme/badge.svg)](https://docs.rs/showme)
 [![License: GPL-2.0](https://img.shields.io/badge/License-GPL--2.0-blue.svg)](LICENSE)
-[![Build Status](https://github.com/sandwichfarm/terminal-media/workflows/Release/badge.svg)](https://github.com/sandwichfarm/terminal-media/actions)
+[![Build Status](https://github.com/sandwichfarm/showme/workflows/Release/badge.svg)](https://github.com/sandwichfarm/showme/actions)
 [![Rust Version](https://img.shields.io/badge/rust-2024%2B-orange.svg)](https://www.rust-lang.org)
 
-`terminal-media` is a powerful terminal image and video viewer written in Rust. View images, videos, PDFs, and SVGs directly in your terminal without leaving your workflow.
+`showme` is a powerful terminal image and video viewer written in Rust. View images, videos, PDFs, and SVGs directly in your terminal without leaving your workflow.
 
 ## Table of Contents
 
@@ -128,7 +128,7 @@ cargo build --no-default-features --features unicode,kitty,iterm2
 
 ## Using as a Library
 
-`terminal-media` can be used as a Rust crate to add terminal image/video rendering capabilities to your own applications.
+`showme` can be used as a Rust crate to add terminal image/video rendering capabilities to your own applications.
 
 ### Adding the Dependency
 
@@ -136,17 +136,17 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-terminal-media = { git = "https://github.com/sandwichfarm/terminal-media" }
+showme = { git = "https://github.com/sandwichfarm/showme" }
 # Or when published to crates.io:
-# terminal-media = "0.1"
+# showme = "0.1"
 ```
 
 ### Basic Usage
 
 ```rust
-use terminal_media::{Cli, Renderer};
+use showme::{Cli, Renderer};
 
-fn main() -> terminal_media::Result<()> {
+fn main() -> showme::Result<()> {
     // Parse CLI arguments and render
     let cli = Cli::parse();
     let config = cli.into_config()?;
@@ -161,12 +161,12 @@ Bypass CLI parsing and configure programmatically:
 
 ```rust
 use std::path::PathBuf;
-use terminal_media::{
+use showme::{
     Config, Renderer, BackendKind, RenderSizing,
     config::{PixelationMode, RotationMode, BackgroundColor}
 };
 
-fn main() -> terminal_media::Result<()> {
+fn main() -> showme::Result<()> {
     let mut config = Config {
         inputs: vec![PathBuf::from("photo.jpg")],
         backend: BackendKind::Auto,
@@ -195,8 +195,8 @@ Load and process images directly:
 
 ```rust
 use std::path::Path;
-use terminal_media::image::load_image;
-use terminal_media::config::RotationMode;
+use showme::image::load_image;
+use showme::config::RotationMode;
 
 let sequence = load_image(
     Path::new("photo.jpg"),
@@ -226,100 +226,100 @@ For detailed API documentation, see [`docs/library/README.md`](docs/library/READ
 
 ```bash
 # View a single image
-terminal-media photo.jpg
+showme photo.jpg
 
 # Use quarter-block mode for better detail (default)
-terminal-media -p quarter image.png
+showme -p quarter image.png
 
 # Use half-block mode for better color accuracy
-terminal-media -p half image.png
+showme -p half image.png
 
 # View images in a grid
-terminal-media --grid 3 screenshots/*.png
+showme --grid 3 screenshots/*.png
 
 # View video files
-terminal-media video.mp4
+showme video.mp4
 
 # Play video for 10 seconds
-terminal-media -t 10s video.mp4
+showme -t 10s video.mp4
 
 # Loop animation 3 times
-terminal-media --loops 3 animation.gif
+showme --loops 3 animation.gif
 
 # Show only first 50 frames
-terminal-media --frames 50 animation.gif
+showme --frames 50 animation.gif
 
 # Skip first 100 frames, show next 50
-terminal-media --frame-offset 100 --frames 50 video.mp4
+showme --frame-offset 100 --frames 50 video.mp4
 
 # View PDF documents (shows all pages as frames)
-terminal-media document.pdf
+showme document.pdf
 
 # View SVG files
-terminal-media logo.svg
+showme logo.svg
 
 # Scroll through large images
-terminal-media --scroll --delta-move 5,2 large-image.jpg
+showme --scroll --delta-move 5,2 large-image.jpg
 
 # Read from stdin
-cat image.jpg | terminal-media -
+cat image.jpg | showme -
 
 # Read list of images from file
-terminal-media -f images.txt
+showme -f images.txt
 
 # Read list with paths relative to file location
-terminal-media -F /path/to/gallery/images.txt
+showme -F /path/to/gallery/images.txt
 
 # Combine file list with other images
-terminal-media -f batch1.txt extra-image.png -f batch2.txt
+showme -f batch1.txt extra-image.png -f batch2.txt
 
 # Constrain dimensions
-terminal-media --width 120 --height 40 gallery/*.gif
+showme --width 120 --height 40 gallery/*.gif
 
 # Fit to width (may overflow terminal height)
-terminal-media --fit-width wide-panorama.jpg
+showme --fit-width wide-panorama.jpg
 
 # Fit to height (may overflow terminal width)
-terminal-media --fit-height tall-portrait.jpg
+showme --fit-height tall-portrait.jpg
 
 # Upscale small images
-terminal-media --upscale small-icon.png
+showme --upscale small-icon.png
 
 # Integer upscaling (no antialiasing)
-terminal-media -U i pixel-art.png
+showme -U i pixel-art.png
 
 # View phone photos with automatic rotation
-terminal-media phone-photos/*.jpg
+showme phone-photos/*.jpg
 
 # Disable EXIF rotation if needed
-terminal-media --rotate off rotated-image.jpg
+showme --rotate off rotated-image.jpg
 
 # Auto-crop screenshots to remove borders
-terminal-media --auto-crop screenshot.png
+showme --auto-crop screenshot.png
 
 # Crop fixed 10px border, then auto-crop the rest
-terminal-media --crop-border 10 --auto-crop scanned-document.jpg
+showme --crop-border 10 --auto-crop scanned-document.jpg
 
 # Slideshow with titles
-terminal-media --wait 2 --title "%n/%f" vacation/*.png
+showme --wait 2 --title "%n/%f" vacation/*.png
 
 # Use alternate screen (clear on exit)
-terminal-media --alternate-screen animation.gif
+showme --alternate-screen animation.gif
 
 # Center images with custom background
-terminal-media --center --background "#1e1e1e" logo.png
+showme --center --background "#1e1e1e" logo.png
 
 # Use 8-bit color mode for older terminals
-terminal-media --color8 image.png
+showme --color8 image.png
 
 # Output to file instead of stdout
-terminal-media -o output.txt image.png
+showme -o output.txt image.png
 
 # Verbose mode with terminal info
-terminal-media --verbose photo.jpg
+showme --verbose photo.jpg
 
 # Use specific number of threads
-terminal-media --threads 4 gallery/*.jpg
+showme --threads 4 gallery/*.jpg
 ```
 
 Pass `--help` to see the complete option list.
@@ -351,10 +351,10 @@ Example workflow:
 find ~/Pictures -name "*.jpg" > my-photos.txt
 
 # View all photos
-terminal-media -f my-photos.txt
+showme -f my-photos.txt
 
 # Or use -F if you move the file list
-terminal-media -F ~/gallery/images.txt
+showme -F ~/gallery/images.txt
 ```
 
 ## Testing
@@ -396,7 +396,7 @@ cargo test integration_tests
 Additional documentation is available:
 
 - **[Extended Examples](docs/examples.md)** - Comprehensive tutorials and use cases for both CLI and library usage
-- **[API Documentation](https://docs.rs/terminal-media)** - Full API reference (after crates.io publication)
+- **[API Documentation](https://docs.rs/showme)** - Full API reference (after crates.io publication)
 - **[Library Examples](examples/)** - Working code examples in the `examples/` directory:
   - `basic_viewer.rs` - Simple image viewer
   - `custom_backend.rs` - Backend selection
@@ -430,8 +430,8 @@ cargo fmt --check
 cargo clippy -- -D warnings
 ```
 
-For questions or bug reports, please [open an issue](https://github.com/sandwichfarm/terminal-media/issues) on GitHub.
+For questions or bug reports, please [open an issue](https://github.com/sandwichfarm/showme/issues) on GitHub.
 
 ## Licensing
 
-`terminal-media` is distributed under the terms of the GPL-2.0 license. See `LICENSE` for details.
+`showme` is distributed under the terms of the GPL-2.0 license. See `LICENSE` for details.

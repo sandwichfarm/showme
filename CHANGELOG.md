@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Initial release of terminal-media
+- Initial release of showme
 - Multiple rendering backends:
   - Unicode half-block and quarter-block renderers with 24-bit color
   - Kitty graphics protocol backend
@@ -74,5 +74,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial development version.
 
-[Unreleased]: https://github.com/sandwichfarm/terminal-media/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/sandwichfarm/terminal-media/releases/tag/v0.1.0
+[Unreleased]: https://github.com/sandwichfarm/showme/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/sandwichfarm/showme/releases/tag/v0.1.0

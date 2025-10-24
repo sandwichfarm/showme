@@ -2,7 +2,7 @@ use std::process;
 
 use clap::Parser;
 
-use terminal_media::{Cli, Renderer, Result};
+use showme::{Cli, Renderer, Result};
 
 fn main() {
     if let Err(err) = run() {

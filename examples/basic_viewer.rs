@@ -1,15 +1,15 @@
 /// Basic image viewer example
 ///
-/// This example shows how to use terminal-media to display a single image
+/// This example shows how to use showme to display a single image
 /// using the default configuration.
 ///
 /// Usage: cargo run --example basic_viewer path/to/image.jpg
 
 use std::path::PathBuf;
-use terminal_media::{Config, Renderer, BackendKind, RenderSizing};
-use terminal_media::config::{PixelationMode, RotationMode, BackgroundColor};
+use showme::{Config, Renderer, BackendKind, RenderSizing};
+use showme::config::{PixelationMode, RotationMode, BackgroundColor};
 
-fn main() -> terminal_media::Result<()> {
+fn main() -> showme::Result<()> {
     // Get image path from command line arguments
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {

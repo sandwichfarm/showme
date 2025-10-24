@@ -1,19 +1,19 @@
 [package]
-name = "terminal-media"
+name = "showme"
 version = "0.1.0"
 edition = "2024"
 authors = ["sandwich <bread@sandwich.farm>"]
 description = "A powerful terminal image and video viewer supporting multiple formats and rendering backends"
-repository = "https://github.com/sandwichfarm/terminal-media"
-homepage = "https://github.com/sandwichfarm/terminal-media"
-documentation = "https://docs.rs/terminal-media"
+repository = "https://github.com/sandwichfarm/showme"
+homepage = "https://github.com/sandwichfarm/showme"
+documentation = "https://docs.rs/showme"
 readme = "README.md"
 license = "GPL-2.0"
 keywords = ["terminal", "image", "video", "viewer", "media"]
 categories = ["command-line-utilities", "multimedia::images", "multimedia::video"]
 
 [[bin]]
-name = "terminal-media"
+name = "showme"
 path = "src/main.rs"
 
 [features]

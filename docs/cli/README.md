@@ -1,6 +1,6 @@
-# terminal-media CLI Guide
+# showme CLI Guide
 
-This guide documents the `terminal-media` executable in detail: how to install it, every command-line flag, and how the program behaves in different environments.
+This guide documents the `showme` executable in detail: how to install it, every command-line flag, and how the program behaves in different environments.
 
 ## 1. Installation
 
@@ -8,12 +8,13 @@ This guide documents the `terminal-media` executable in detail: how to install i
 
 ```bash
 # clone the repository
-cd /path/to/rimg
+git clone https://github.com/sandwichfarm/showme.git
+cd showme
 
 # build the binary with the default feature set
 cargo build --release
 
-# the executable will be written to target/release/terminal-media
+# the executable will be written to target/release/showme
 ```
 
 ### Optional features
@@ -39,7 +40,7 @@ cargo build --no-default-features --features unicode,kitty,iterm2
 ## 2. Usage synopsis
 
 ```
-terminal-media [OPTIONS] <PATH>...
+showme [OPTIONS] <PATH>...
 ```
 
 - At least one input path is required.
@@ -173,117 +174,117 @@ Examples:
 
 Render a single photo:
 ```bash
-terminal-media beach.png
+showme beach.png
 ```
 
 View video for 10 seconds:
 ```bash
-terminal-media -t 10s video.mp4
+showme -t 10s video.mp4
 ```
 
 View PDF document:
 ```bash
-terminal-media document.pdf
+showme document.pdf
 ```
 
 View SVG file:
 ```bash
-terminal-media logo.svg
+showme logo.svg
 ```
 
 ### Grid layouts
 
 Show screenshots in a 3×2 grid:
 ```bash
-terminal-media --grid 3x2 --grid-gap 1 screenshots/*.png
+showme --grid 3x2 --grid-gap 1 screenshots/*.png
 ```
 
 ### Animation control
 
 Loop GIF forever:
 ```bash
-terminal-media --loop animation.gif
+showme --loop animation.gif
 ```
 
 Loop 3 times:
 ```bash
-terminal-media --loops 3 animation.gif
+showme --loops 3 animation.gif
 ```
 
 Show first 50 frames:
 ```bash
-terminal-media --frames 50 video.mp4
+showme --frames 50 video.mp4
 ```
 
 Skip first 100 frames:
 ```bash
-terminal-media --frame-offset 100 video.mp4
+showme --frame-offset 100 video.mp4
 ```
 
 ### Sizing and scaling
 
 Fit to width:
 ```bash
-terminal-media --fit-width panorama.jpg
+showme --fit-width panorama.jpg
 ```
 
 Upscale small images:
 ```bash
-terminal-media --upscale icon.png
+showme --upscale icon.png
 ```
 
 Integer upscaling for pixel art:
 ```bash
-terminal-media -U i pixel-art.png
+showme -U i pixel-art.png
 ```
 
 Constrain dimensions:
 ```bash
-terminal-media --width 80 --height 24 image.jpg
+showme --width 80 --height 24 image.jpg
 ```
 
 ### Image processing
 
 Auto-crop borders:
 ```bash
-terminal-media --auto-crop screenshot.png
+showme --auto-crop screenshot.png
 ```
 
 Crop fixed border then auto-crop:
 ```bash
-terminal-media --crop-border 10 --auto-crop scan.jpg
+showme --crop-border 10 --auto-crop scan.jpg
 ```
 
 Disable EXIF rotation:
 ```bash
-terminal-media --rotate off photo.jpg
+showme --rotate off photo.jpg
 ```
 
 ### Display customization
 
 Center with custom background:
 ```bash
-terminal-media --center --background "#1e1e1e" logo.png
+showme --center --background "#1e1e1e" logo.png
 ```
 
 Slideshow with titles:
 ```bash
-terminal-media --wait 2 --title "%n/%f" vacation/*.png
+showme --wait 2 --title "%n/%f" vacation/*.png
 ```
 
 Use alternate screen:
 ```bash
-terminal-media --alternate-screen animation.gif
+showme --alternate-screen animation.gif
 ```
 
 Use 8-bit color mode:
 ```bash
-terminal-media --color8 image.png
+showme --color8 image.png
 ```
 
 Verbose output:
 ```bash
-terminal-media --verbose photo.jpg
+showme --verbose photo.jpg
 ```
 
 ### File lists
@@ -291,33 +292,33 @@ terminal-media --verbose photo.jpg
 Create and use file lists:
 ```bash
 find ~/Pictures -name "*.jpg" > photos.txt
-terminal-media -f photos.txt
+showme -f photos.txt
 ```
 
 ### Scrolling large images
 
 Scroll through panorama:
 ```bash
-terminal-media --scroll --delta-move 5,2 large-panorama.jpg
+showme --scroll --delta-move 5,2 large-panorama.jpg
 ```
 
 ### Output to file
 
 Save output to file:
 ```bash
-terminal-media -o output.txt image.png
+showme -o output.txt image.png
 ```
 
 ### Performance tuning
 
 Use specific thread count:
 ```bash
-terminal-media --threads 4 gallery/*.jpg
+showme --threads 4 gallery/*.jpg
 ```
 
 Higher compression:
 ```bash
-terminal-media --compress 9 --backend kitty image.png
+showme --compress 9 --backend kitty image.png
 ```
 
-With these options you can customize terminal-media for any workflow.
+With these options you can customize showme for any workflow.

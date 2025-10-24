@@ -7,10 +7,10 @@
 ///        Backends: auto, unicode, kitty, iterm2
 
 use std::path::PathBuf;
-use terminal_media::{Config, Renderer, BackendKind, RenderSizing};
-use terminal_media::config::{PixelationMode, RotationMode, BackgroundColor};
+use showme::{Config, Renderer, BackendKind, RenderSizing};
+use showme::config::{PixelationMode, RotationMode, BackgroundColor};
 
-fn main() -> terminal_media::Result<()> {
+fn main() -> showme::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 3 {
         eprintln!("Usage: {} <backend> <image-path>", args[0]);

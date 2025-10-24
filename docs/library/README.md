@@ -1,6 +1,6 @@
-# terminal-media Library Guide
+# showme Library Guide
 
-This document explains how the `terminal-media` crate is structured, how to embed it in other Rust applications, and the responsibilities of the major modules.
+This document explains how the `showme` crate is structured, how to embed it in other Rust applications, and the responsibilities of the major modules.
 
 ## 1. Getting started
 
@@ -8,7 +8,9 @@ Add the crate to a Cargo project directly from the local checkout:
 
 ```toml
 [dependencies]
-terminal-media = { path = "../rimg", features = ["kitty", "iterm2"] }
+showme = { path = "../showme", features = ["kitty", "iterm2"] }
+# Or from git:
+# showme = { git = "https://github.com/sandwichfarm/showme", features = ["kitty", "iterm2"] }
 ```
 
 Feature flags:
@@ -47,9 +49,9 @@ The typical flow is `Cli::parse() → Cli::into_config() → Renderer::build(con
 ## 3. Example: embedding the renderer
 
 ```rust
-use terminal_media::{Cli, Renderer};
+use showme::{Cli, Renderer};
 
-fn main() -> terminal_media::Result<()> {
+fn main() -> showme::Result<()> {
     // When you already have CLI arguments you can reuse the clap struct.
     let cli = Cli::parse();
     let config = cli.into_config()?;
@@ -62,7 +64,7 @@ When integrating into a larger app you can bypass `Cli` entirely:
 
 ```rust
 use std::num::NonZeroUsize;
-use terminal_media::{BackendKind, Config, GridOptions, RenderSizing, Renderer};
+use showme::{BackendKind, Config, GridOptions, RenderSizing, Renderer};
 
 let config = Config {
     inputs: vec!["demo.png".into(), "demo.gif".into()],
@@ -77,8 +79,8 @@ let config = Config {
         width_stretch: 1.0,
         antialias: true,
     },
-    pixelation: terminal_media::config::PixelationMode::Quarter,
-    rotation: terminal_media::config::RotationMode::Exif,
+    pixelation: showme::config::PixelationMode::Quarter,
+    rotation: showme::config::RotationMode::Exif,
     auto_crop: false,
     crop_border: 0,
     grid: Some(GridOptions {
@@ -101,7 +103,7 @@ let config = Config {
     center: false,
     alternate_screen: false,
     hide_cursor: true,
-    background: terminal_media::config::BackgroundColor::Auto,
+    background: showme::config::BackgroundColor::Auto,
     pattern_color: None,
     pattern_size: 1,
     use_8bit_color: false,
@@ -260,4 +262,4 @@ Responsibilities:
 4. Apply rotation and cropping transformations
 5. Return `ImageSequence` with decoded frames
 
-Armed with the above understanding you can treat `terminal-media` as a library component—construct configs programmatically, feed it data, and reuse individual modules (e.g. the unicode backend) inside your own rendering pipelines.
+Armed with the above understanding you can treat `showme` as a library component—construct configs programmatically, feed it data, and reuse individual modules (e.g. the unicode backend) inside your own rendering pipelines.

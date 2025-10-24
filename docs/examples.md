@@ -1,6 +1,6 @@
 # Extended Examples and Tutorials
 
-This guide provides comprehensive examples for using terminal-media both as a CLI tool and as a library in your Rust projects.
+This guide provides comprehensive examples for using showme both as a CLI tool and as a library in your Rust projects.
 
 ## Table of Contents
 
@@ -27,63 +27,63 @@ This guide provides comprehensive examples for using terminal-media both as a CL
 
 **View a single image:**
 ```bash
-terminal-media photo.jpg
+showme photo.jpg
 ```
 
 **View with specific size constraints:**
 ```bash
 # Constrain to 80 columns wide, 40 rows tall
-terminal-media -w 80 -H 40 image.png
+showme -w 80 -H 40 image.png
 
 # Fit to terminal width (may overflow height)
-terminal-media --fit-width panorama.jpg
+showme --fit-width panorama.jpg
 
 # Fit to terminal height (may overflow width)
-terminal-media --fit-height portrait.jpg
+showme --fit-height portrait.jpg
 ```
 
 **Center image with custom background:**
 ```bash
-terminal-media --center --background "#1e1e1e" logo.png
+showme --center --background "#1e1e1e" logo.png
 ```
 
 **Use alternate screen (clears on exit):**
 ```bash
-terminal-media --alternate-screen presentation.png
+showme --alternate-screen presentation.png
 ```
 
 ### Working with Videos
 
 **Play a video:**
 ```bash
-terminal-media video.mp4
+showme video.mp4
 ```
 
 **Play for specific duration:**
 ```bash
 # Play for 10 seconds
-terminal-media -t 10s video.mp4
+showme -t 10s video.mp4
 
 # Play for 500 milliseconds
-terminal-media -t 500ms clip.mp4
+showme -t 500ms clip.mp4
 ```
 
 **Control frame playback:**
 ```bash
 # Show first 100 frames
-terminal-media --frames 100 video.mp4
+showme --frames 100 video.mp4
 
 # Skip first 50 frames, show next 100
-terminal-media --frame-offset 50 --frames 100 video.mp4
+showme --frame-offset 50 --frames 100 video.mp4
 ```
 
 **Loop control:**
 ```bash
 # Loop 3 times
-terminal-media --loops 3 animation.gif
+showme --loops 3 animation.gif
 
 # Loop forever
-terminal-media --loop animation.gif
+showme --loop animation.gif
 ```
 
 ### Grid Layouts
@@ -91,16 +91,16 @@ terminal-media --loop animation.gif
 **Simple grid:**
 ```bash
 # 3 columns
-terminal-media --grid 3 photos/*.jpg
+showme --grid 3 photos/*.jpg
 
 # 2x3 grid (2 rows, 3 columns)
-terminal-media --grid 2x3 photos/*.jpg
+showme --grid 2x3 photos/*.jpg
 ```
 
 **Grid with spacing:**
 ```bash
 # Grid with custom spacing between images
-terminal-media --grid 3 --pattern-size 2 photos/*.jpg
+showme --grid 3 --pattern-size 2 photos/*.jpg
 ```
 
 ### Slideshows
@@ -108,19 +108,19 @@ terminal-media --grid 3 --pattern-size 2 photos/*.jpg
 **Automatic slideshow:**
 ```bash
 # Wait 2 seconds between images
-terminal-media --wait 2 vacation/*.png
+showme --wait 2 vacation/*.png
 
 # Progressive rendering with row delay
-terminal-media --wait-rows 0.01 animation.gif
+showme --wait-rows 0.01 animation.gif
 ```
 
 **Slideshow with titles:**
 ```bash
 # Show filename and dimensions
-terminal-media --wait 2 --title "%f - %wx%h" photos/*.jpg
+showme --wait 2 --title "%f - %wx%h" photos/*.jpg
 
 # Show image number out of total
-terminal-media --wait 2 --title "Image %n of %N" photos/*.jpg
+showme --wait 2 --title "Image %n of %N" photos/*.jpg
 ```
 
 **Title format variables:**
@@ -135,61 +135,61 @@ terminal-media --wait 2 --title "Image %n of %N" photos/*.jpg
 **EXIF rotation:**
 ```bash
 # Auto-rotate based on EXIF data (default)
-terminal-media phone-photos/*.jpg
+showme phone-photos/*.jpg
 
 # Disable rotation
-terminal-media --rotate off rotated.jpg
+showme --rotate off rotated.jpg
 ```
 
 **Cropping:**
 ```bash
 # Auto-crop uniform borders
-terminal-media --auto-crop screenshot.png
+showme --auto-crop screenshot.png
 
 # Remove 10px border, then auto-crop
-terminal-media --crop-border 10 --auto-crop scan.jpg
+showme --crop-border 10 --auto-crop scan.jpg
 
 # Just remove 10px border
-terminal-media --crop-border 10 photo.jpg
+showme --crop-border 10 photo.jpg
 ```
 
 **Upscaling:**
 ```bash
 # Upscale small images
-terminal-media --upscale icon.png
+showme --upscale icon.png
 
 # Integer upscaling (good for pixel art)
-terminal-media -U i pixel-art.png
+showme -U i pixel-art.png
 ```
 
 **Backend selection:**
 ```bash
 # Auto-detect best backend (default)
-terminal-media photo.jpg
+showme photo.jpg
 
 # Force specific backend
-terminal-media --backend kitty photo.jpg
-terminal-media --backend iterm2 photo.jpg
-terminal-media --backend unicode photo.jpg
-terminal-media --backend sixel photo.jpg  # requires --features sixel
+showme --backend kitty photo.jpg
+showme --backend iterm2 photo.jpg
+showme --backend unicode photo.jpg
+showme --backend sixel photo.jpg  # requires --features sixel
 ```
 
 **Rendering modes:**
 ```bash
 # Quarter-block (default, best detail)
-terminal-media -p quarter photo.jpg
+showme -p quarter photo.jpg
 
 # Half-block (better color accuracy)
-terminal-media -p half photo.jpg
+showme -p half photo.jpg
 ```
 
 **Color modes:**
 ```bash
 # 24-bit color (default)
-terminal-media photo.jpg
+showme photo.jpg
 
 # 8-bit color for older terminals
-terminal-media --color8 photo.jpg
+showme --color8 photo.jpg
 ```
 
 ### Advanced CLI Usage
@@ -200,47 +200,47 @@ terminal-media --color8 photo.jpg
 find ~/Pictures -name "*.jpg" > photos.txt
 
 # Process from file list
-terminal-media -f photos.txt
+showme -f photos.txt
 
 # Relative paths from file location
-terminal-media -F /path/to/gallery/images.txt
+showme -F /path/to/gallery/images.txt
 ```
 
 **Scrolling through large images:**
 ```bash
 # Scroll with default delta (1x1)
-terminal-media --scroll large-map.png
+showme --scroll large-map.png
 
 # Scroll with custom movement speed
-terminal-media --scroll --delta-move 5,2 image.png
+showme --scroll --delta-move 5,2 image.png
 
 # Scroll with custom delay
-terminal-media --scroll --scroll-delay 100 image.png
+showme --scroll --scroll-delay 100 image.png
 ```
 
 **Output to file:**
 ```bash
 # Save rendered output to file
-terminal-media -o output.txt image.png
+showme -o output.txt image.png
 
 # Process and save in pipeline
-terminal-media image.png -o rendered.ans
+showme image.png -o rendered.ans
 ```
 
 **Performance tuning:**
 ```bash
 # Use 8 threads for parallel loading
-terminal-media --threads 8 gallery/*.jpg
+showme --threads 8 gallery/*.jpg
 
 # Adjust compression level (1-9, higher = more compression)
-terminal-media --compress 4 image.png
+showme --compress 4 image.png
 ```
 
 ## Library Examples
 
 ### Simple Integration
 
-The simplest way to use terminal-media as a library:
+The simplest way to use showme as a library:
 
 ```rust
 use terminal_media::{Cli, Renderer};
