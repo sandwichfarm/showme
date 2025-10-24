@@ -788,7 +788,7 @@ mod tests {
 
     #[test]
     fn parses_alternate_screen_flag() {
-        let cli = Cli::parse_from(["terminal-media", "--alternate-screen", "img.png"]);
+        let cli = Cli::parse_from(["showme", "--alternate-screen", "img.png"]);
         let config = cli.into_config().expect("config");
         assert!(config.alternate_screen);
     }

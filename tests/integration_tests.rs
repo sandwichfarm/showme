@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use terminal_media::{BackendKind, Config, PixelationMode, RenderSizing, RotationMode};
+use showme::{BackendKind, Config, PixelationMode, RenderSizing, RotationMode};
 
 #[test]
 fn test_config_with_all_options() {
@@ -28,7 +28,7 @@ fn test_config_with_all_options() {
         title_format: Some(String::from("%f")),
         center: true,
         alternate_screen: true,
-        background: terminal_media::config::BackgroundColor::Auto,
+        background: showme::config::BackgroundColor::Auto,
         pattern_color: None,
         pattern_size: 1,
         auto_crop: false,
@@ -66,7 +66,7 @@ fn test_config_validation_empty_inputs() {
         title_format: None,
         center: false,
         alternate_screen: false,
-        background: terminal_media::config::BackgroundColor::Auto,
+        background: showme::config::BackgroundColor::Auto,
         pattern_color: None,
         pattern_size: 1,
         auto_crop: false,
@@ -99,7 +99,7 @@ fn test_animation_control_combinations() {
         title_format: None,
         center: false,
         alternate_screen: false,
-        background: terminal_media::config::BackgroundColor::Auto,
+        background: showme::config::BackgroundColor::Auto,
         pattern_color: None,
         pattern_size: 1,
         auto_crop: false,
@@ -135,7 +135,7 @@ fn test_infinite_loops() {
         title_format: None,
         center: false,
         alternate_screen: false,
-        background: terminal_media::config::BackgroundColor::Auto,
+        background: showme::config::BackgroundColor::Auto,
         pattern_color: None,
         pattern_size: 1,
         auto_crop: false,

@@ -1,6 +1,6 @@
-# Contributing to terminal-media
+# Contributing to showme
 
-Thank you for your interest in contributing to terminal-media! This document provides guidelines and instructions for contributing to the project.
+Thank you for your interest in contributing to showme! This document provides guidelines and instructions for contributing to the project.
 
 ## Table of Contents
 
@@ -22,12 +22,12 @@ This project follows standard open source community guidelines. Please be respec
 1. **Fork the repository** on GitHub
 2. **Clone your fork** locally:
    ```bash
-   git clone https://github.com/YOUR-USERNAME/terminal-media.git
-   cd terminal-media
+   git clone https://github.com/YOUR-USERNAME/showme.git
+   cd showme
    ```
 3. **Add upstream remote**:
    ```bash
-   git remote add upstream https://github.com/sandwichfarm/terminal-media.git
+   git remote add upstream https://github.com/sandwichfarm/showme.git
    ```
 
 ## Development Setup
@@ -304,4 +304,4 @@ Looking for something to work on? Check out:
 - Start a discussion for questions or ideas
 - Check existing issues before opening new ones
 
-Thank you for contributing to terminal-media!
+Thank you for contributing to showme!

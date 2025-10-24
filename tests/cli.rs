@@ -3,7 +3,7 @@ use predicates::prelude::*;
 
 #[test]
 fn help_displays_usage() {
-    let mut cmd = Command::cargo_bin("terminal-media").expect("binary exists");
+    let mut cmd = Command::cargo_bin("showme").expect("binary exists");
     cmd.arg("--help")
         .assert()
         .success()

@@ -1216,6 +1216,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
+name = "showme"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "assert_cmd",
+ "atty",
+ "base64",
+ "clap",
+ "crossterm",
+ "ffmpeg-next",
+ "image",
+ "kamadak-exif",
+ "once_cell",
+ "pdfium-render",
+ "predicates",
+ "qoi",
+ "rayon",
+ "resvg",
+ "sixel-sys",
+ "thiserror",
+]
+
+[[package]]
 name = "signal-hook"
 version = "0.3.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1324,29 +1347,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "terminal-media"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "assert_cmd",
- "atty",
- "base64",
- "clap",
- "crossterm",
- "ffmpeg-next",
- "image",
- "kamadak-exif",
- "once_cell",
- "pdfium-render",
- "predicates",
- "qoi",
- "rayon",
- "resvg",
- "sixel-sys",
- "thiserror",
 ]
 
 [[package]]

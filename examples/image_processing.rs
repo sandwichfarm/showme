@@ -6,10 +6,10 @@
 /// Usage: cargo run --example image_processing <image-path>
 
 use std::path::Path;
-use terminal_media::image::load_image;
-use terminal_media::config::RotationMode;
+use showme::image::load_image;
+use showme::config::RotationMode;
 
-fn main() -> terminal_media::Result<()> {
+fn main() -> showme::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
         eprintln!("Usage: {} <image-path>", args[0]);
@@ -101,9 +101,9 @@ fn main() -> terminal_media::Result<()> {
     )?;
 
     let original_frame = sequence.first_frame()
-        .ok_or_else(|| terminal_media::RimgError::other("No frames in original image"))?;
+        .ok_or_else(|| showme::RimgError::other("No frames in original image"))?;
     let cropped_frame = cropped.first_frame()
-        .ok_or_else(|| terminal_media::RimgError::other("No frames in cropped image"))?;
+        .ok_or_else(|| showme::RimgError::other("No frames in cropped image"))?;
 
     println!("  Original: {}x{}",
         original_frame.pixels.width(),
