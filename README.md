@@ -2,6 +2,21 @@
 
 `terminal-media` is a powerful terminal image and video viewer written in Rust. View images, videos, PDFs, and SVGs directly in your terminal without leaving your workflow.
 
+## Table of Contents
+
+- [Features](#features)
+- [Building from Source](#building-from-source)
+- [Using as a Library](#using-as-a-library)
+  - [Adding the Dependency](#adding-the-dependency)
+  - [Basic Usage](#basic-usage)
+  - [Programmatic Configuration](#programmatic-configuration)
+  - [Image Loading](#image-loading)
+  - [Available Modules](#available-modules)
+- [CLI Usage](#cli-usage)
+- [File Lists](#file-lists)
+- [Testing](#testing)
+- [Licensing](#licensing)
+
 ## Features
 
 - **Multiple rendering modes:**
@@ -103,7 +118,103 @@ To build with minimal features:
 cargo build --no-default-features --features unicode,kitty,iterm2
 ```
 
-## Usage
+## Using as a Library
+
+`terminal-media` can be used as a Rust crate to add terminal image/video rendering capabilities to your own applications.
+
+### Adding the Dependency
+
+Add to your `Cargo.toml`:
+
+```toml
+[dependencies]
+terminal-media = { git = "https://github.com/yourusername/rimg" }
+# Or when published to crates.io:
+# terminal-media = "0.1"
+```
+
+### Basic Usage
+
+```rust
+use terminal_media::{Cli, Renderer};
+
+fn main() -> terminal_media::Result<()> {
+    // Parse CLI arguments and render
+    let cli = Cli::parse();
+    let config = cli.into_config()?;
+    let renderer = Renderer::build(config)?;
+    renderer.run()
+}
+```
+
+### Programmatic Configuration
+
+Bypass CLI parsing and configure programmatically:
+
+```rust
+use std::path::PathBuf;
+use terminal_media::{
+    Config, Renderer, BackendKind, RenderSizing,
+    config::{PixelationMode, RotationMode, BackgroundColor}
+};
+
+fn main() -> terminal_media::Result<()> {
+    let mut config = Config {
+        inputs: vec![PathBuf::from("photo.jpg")],
+        backend: BackendKind::Auto,
+        sizing: RenderSizing {
+            width_cells: Some(80),
+            height_cells: None,
+            fit_width: true,
+            ..RenderSizing::unconstrained()
+        },
+        pixelation: PixelationMode::Quarter,
+        rotation: RotationMode::Exif,
+        background: BackgroundColor::Auto,
+        quiet: false,
+        verbose: false,
+        // ... other Config fields with sensible defaults
+    };
+
+    let renderer = Renderer::build(config)?;
+    renderer.run()
+}
+```
+
+### Image Loading
+
+Load and process images directly:
+
+```rust
+use std::path::Path;
+use terminal_media::image::load_image;
+use terminal_media::config::RotationMode;
+
+let sequence = load_image(
+    Path::new("photo.jpg"),
+    RotationMode::Exif,
+    true,  // auto_crop
+    10     // crop_border
+)?;
+
+println!("Loaded {} frames", sequence.frames.len());
+println!("First frame: {}x{}",
+    sequence.frames[0].pixels.width(),
+    sequence.frames[0].pixels.height()
+);
+```
+
+### Available Modules
+
+- `config`: Configuration types and builders
+- `backend`: Rendering backends (Unicode, Kitty, iTerm2, Sixel)
+- `image`: Image/video loading and decoding
+- `capabilities`: Terminal detection and feature probing
+- `error`: Error types and Result alias
+
+For detailed API documentation, see [`docs/library/README.md`](docs/library/README.md).
+
+## CLI Usage
 
 ```bash
 # View a single image
