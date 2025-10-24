@@ -166,6 +166,7 @@ jobs:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     needs: [publish-crate, build-binaries]
+    if: always() && needs.build-binaries.result == 'success'
     permissions:
       contents: write
 
