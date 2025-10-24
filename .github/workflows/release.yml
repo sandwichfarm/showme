@@ -185,6 +185,23 @@ jobs:
           echo "" >> changelog.md
           echo "$CHANGELOG" >> changelog.md
           echo "" >> changelog.md
+          echo "## Platform Compatibility" >> changelog.md
+          echo "" >> changelog.md
+          echo "Pre-built binaries have different feature support depending on the platform:" >> changelog.md
+          echo "" >> changelog.md
+          echo "| Platform | Video Support | Sixel | All Other Features* |" >> changelog.md
+          echo "|----------|---------------|-------|---------------------|" >> changelog.md
+          echo "| **Linux x86_64** | ✅ Yes | ✅ Yes (optional) | ✅ Yes |" >> changelog.md
+          echo "| **Linux ARM64** | ❌ No† | ❌ No | ✅ Yes |" >> changelog.md
+          echo "| **macOS x86_64 (Intel)** | ✅ Yes | ❌ No | ✅ Yes |" >> changelog.md
+          echo "| **macOS ARM64 (Apple Silicon)** | ✅ Yes | ❌ No | ✅ Yes |" >> changelog.md
+          echo "| **Windows x86_64** | ❌ No‡ | ❌ No | ✅ Yes |" >> changelog.md
+          echo "" >> changelog.md
+          echo "*All other features include: Unicode rendering, Kitty graphics, iTerm2 images, QOI, PDF, and SVG support*" >> changelog.md
+          echo "" >> changelog.md
+          echo "† Linux ARM64: Cross-compilation constraints prevent video support. Build from source with ffmpeg for video." >> changelog.md
+          echo "‡ Windows: Build from source with vcpkg for video support." >> changelog.md
+          echo "" >> changelog.md
           echo "## Downloads" >> changelog.md
           echo "" >> changelog.md
           echo "Pre-built binaries are available for the following platforms:" >> changelog.md
