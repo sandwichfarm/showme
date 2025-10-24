@@ -1,0 +1,13 @@
+# Rust build artifacts
+target/
+Cargo.lock
+
+# Editor files
+*~
+.vscode/
+.idea/
+
+# Environment
+.cache/
+.envrc
+.direnv/
