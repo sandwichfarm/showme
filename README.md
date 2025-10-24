@@ -10,6 +10,7 @@
 
 ## Table of Contents
 
+- [Platform Compatibility](#platform-compatibility)
 - [Features](#features)
 - [Building from Source](#building-from-source)
 - [Using as a Library](#using-as-a-library)
@@ -24,6 +25,24 @@
 - [Documentation](#documentation)
 - [Contributing](#contributing)
 - [Licensing](#licensing)
+
+## Platform Compatibility
+
+Pre-built binaries are available for multiple platforms with varying feature support:
+
+| Platform | Video Support | Sixel | All Other Features* |
+|----------|---------------|-------|---------------------|
+| **Linux x86_64** | ✅ Yes | ✅ Yes (optional) | ✅ Yes |
+| **Linux ARM64** | ❌ No† | ❌ No | ✅ Yes |
+| **macOS x86_64 (Intel)** | ✅ Yes | ❌ No | ✅ Yes |
+| **macOS ARM64 (Apple Silicon)** | ✅ Yes | ❌ No | ✅ Yes |
+| **Windows x86_64** | ❌ No‡ | ❌ No | ✅ Yes |
+
+\* All other features include: Unicode rendering, Kitty graphics, iTerm2 images, QOI format, PDF rendering, and SVG support
+† Linux ARM64: Cross-compilation constraints prevent video support in pre-built binaries. Build from source with ffmpeg for video.
+‡ Windows: Complex ffmpeg setup prevents video support in pre-built binaries. Build from source with vcpkg for video.
+
+**Building from source** allows you to enable all features on any platform if dependencies are available. See [Building from Source](#building-from-source).
 
 ## Features
 
