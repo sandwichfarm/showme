@@ -65,10 +65,44 @@ impl Backend for ITerm2Backend {
     }
 
     fn render(&self, frame: &Frame, options: RenderOptions) -> Result<RenderedFrame> {
-        let (mut image, width_cells, height_cells) = scale_frame(frame, options);
+        // For iTerm2 graphics, don't downscale - keep original resolution
+        // Just calculate cell allocation based on aspect ratio
+        let pixels = &frame.pixels;
+
+        let max_width_cells = options.sizing.width_cells
+            .unwrap_or(options.terminal.columns as u32)
+            .min(options.terminal.columns as u32);
+
+        let max_height_cells = options.sizing.height_cells
+            .unwrap_or(options.terminal.rows as u32)
+            .min(options.terminal.rows as u32);
+
+        // Calculate aspect-ratio-preserving cell allocation
+        let cell_aspect = 0.5;
+        let img_aspect = pixels.width() as f64 / pixels.height() as f64;
+
+        let (width_cells, height_cells) = if options.sizing.width_cells.is_some() && options.sizing.height_cells.is_some() {
+            (max_width_cells, max_height_cells)
+        } else {
+            let width_if_height_limited = (max_height_cells as f64 * img_aspect / cell_aspect) as u32;
+            let height_if_width_limited = (max_width_cells as f64 * cell_aspect / img_aspect) as u32;
+
+            if width_if_height_limited <= max_width_cells {
+                (width_if_height_limited.max(1), max_height_cells)
+            } else {
+                (max_width_cells, height_if_width_limited.max(1))
+            }
+        };
+
+        let mut image = pixels.clone();
         blend_transparency(&mut image, options.background);
         let png = encode_png(&image, "iterm2")?;
         let lines = self.build_chunks(&png, width_cells, height_cells);
+
+        if options.verbose {
+            eprintln!("  [iTerm2] Rendering {}x{} pixels in {}x{} cells",
+                     image.width(), image.height(), width_cells, height_cells);
+        }
 
         Ok(RenderedFrame {
             lines,
