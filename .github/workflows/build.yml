@@ -30,12 +30,12 @@ jobs:
             cross: true
 
           # macOS
-          - os: macos-latest
+          - os: macos-13  # Intel runner for x86_64
             target: x86_64-apple-darwin
             artifact_name: showme
             asset_name: showme-macos-x86_64
 
-          - os: macos-latest
+          - os: macos-latest  # ARM runner for aarch64
             target: aarch64-apple-darwin
             artifact_name: showme
             asset_name: showme-macos-aarch64
