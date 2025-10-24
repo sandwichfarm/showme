@@ -128,7 +128,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-terminal-media = { git = "https://github.com/yourusername/rimg" }
+terminal-media = { git = "https://github.com/sandwichfarm/terminal-media" }
 # Or when published to crates.io:
 # terminal-media = "0.1"
 ```
