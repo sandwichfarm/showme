@@ -11,3 +11,9 @@ Cargo.lock
 .cache/
 .envrc
 .direnv/
+
+# demo
+demo-assets
+*.mp4
+*.gif
+*.jpeg

@@ -16,6 +16,10 @@ categories = ["command-line-utilities", "multimedia::images", "multimedia::video
 name = "showme"
 path = "src/main.rs"
 
+[[bin]]
+name = "ascii-title"
+path = "src/bin/ascii_title.rs"
+
 [features]
 default = ["unicode", "kitty", "iterm2", "video", "qoi", "pdf", "svg"]
 unicode = []
@@ -33,6 +37,7 @@ atty = "0.2"
 base64 = "0.22"
 clap = { version = "4.5", features = ["derive"] }
 crossterm = "0.27"
+figlet-rs = "0.1"
 kamadak-exif = "0.5"
 image = { version = "0.25", default-features = false, features = [
     "bmp",
