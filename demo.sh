@@ -26,23 +26,50 @@ RESET='\033[0m'
 
 # Demo configuration
 DEMO_DIR="/tmp/showme-demo"
-SLEEP_SHORT=2
-SLEEP_MEDIUM=3
-SLEEP_LONG=4
+SLEEP_SHORT=0.5
+SLEEP_MEDIUM=1
+SLEEP_LONG=1.5
 
 # Safe mode: limit image sizes
 MAX_WIDTH=80
 MAX_HEIGHT=40
 
-# Banner function
+# Get the script directory at startup (before cd)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# ASCII art title function for large, visible demo headers
+ascii_title() {
+    echo ""
+    echo ""
+
+    local text="$1"
+    local ascii_bin="$SCRIPT_DIR/target/release/ascii-title"
+
+    # Use our ASCII art generator if available
+    if [ -x "$ascii_bin" ]; then
+        "$ascii_bin" "$text" | while IFS= read -r line; do
+            echo -e "${YELLOW}${line}${RESET}"
+        done
+    else
+        # Fallback to simple text if binary not found
+        echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+        echo -e "${YELLOW}  $text${RESET}"
+        echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    fi
+
+    # Add subtitle if provided
+    if [ -n "$2" ]; then
+        echo ""
+        echo -e "${GREEN}                    $2${RESET}"
+    fi
+
+    echo ""
+    echo ""
+}
+
+# Banner function (kept for compatibility)
 banner() {
-    echo ""
-    echo -e "${CYAN}╔════════════════════════════════════════════════════════════════╗${RESET}"
-    echo -e "${CYAN}║$(printf '%62s' | tr ' ' ' ')║${RESET}"
-    printf "${CYAN}║${YELLOW}%62s${CYAN}║${RESET}\n" "$1"
-    echo -e "${CYAN}║$(printf '%62s' | tr ' ' ' ')║${RESET}"
-    echo -e "${CYAN}╚════════════════════════════════════════════════════════════════╝${RESET}"
-    echo ""
+    ascii_title "$@"
 }
 
 # Info function
@@ -53,29 +80,26 @@ info() {
 # Command preview function
 show_command() {
     echo -e "${MAGENTA}$ $1${RESET}"
-    sleep 1
+    sleep 0.3
 }
 
 # Safe showme execution with error handling
 safe_showme() {
-    local output
     local exit_code
 
-    # Capture both stdout and stderr
-    output=$(showme "$@" 2>&1)
+    # Use -o /dev/stdout to bypass TTY check while still outputting to terminal
+    # This allows the wrapper to capture exit codes without breaking TTY detection
+    showme -o /dev/stdout "$@"
     exit_code=$?
 
-    if [ $exit_code -eq 0 ]; then
-        echo "$output"
-        return 0
-    else
-        echo -e "${RED}⚠ Command failed:${RESET} showme $*"
-        echo -e "${YELLOW}Error output:${RESET}"
-        echo "$output" | head -5
+    if [ $exit_code -ne 0 ]; then
+        echo -e "${RED}⚠ Command failed with exit code $exit_code:${RESET} showme $*"
         echo -e "${YELLOW}Continuing with demo...${RESET}"
         sleep 2
         return 1
     fi
+
+    return 0
 }
 
 # Clear screen between demos
@@ -86,28 +110,21 @@ clear_demo() {
 
 # Setup demo directory
 setup_demo() {
-    banner "Setting up demo environment..."
     mkdir -p "$DEMO_DIR"
     cd "$DEMO_DIR"
-    info "Demo directory: $DEMO_DIR"
-    sleep $SLEEP_SHORT
 }
 
 # Download sample images
 download_samples() {
-    banner "Preparing stunning visuals... 🔥"
-
-    # Check for those fire NoGood wallpapers!
-    NOGOOD_DIR="/home/sandwich/Downloads/NoGood - Wallpaper Pack 03"
+    # Check for NoGood wallpapers
+    NOGOOD_DIR="$SCRIPT_DIR/demo-assets/nogood"
 
     if [ -d "$NOGOOD_DIR" ]; then
-        info "Found NoGood Wallpaper Pack! Shuffling for variety 🎲"
-
-        # Get all available NoGood wallpapers and shuffle them
+        # Get all available NoGood wallpapers from all packs and shuffle them
         local nogood_files=()
-        for f in "$NOGOOD_DIR"/NoGood_WallpaperPack_*.jpg; do
-            [ -f "$f" ] && nogood_files+=("$f")
-        done
+        while IFS= read -r -d '' f; do
+            nogood_files+=("$f")
+        done < <(find "$NOGOOD_DIR" -name "*.jpg" -print0)
 
         if [ ${#nogood_files[@]} -gt 0 ]; then
             # Shuffle the array (Fisher-Yates shuffle)
@@ -118,28 +135,35 @@ download_samples() {
                 nogood_files[j]="$temp"
             done
 
-            # Copy first 4 shuffled images
+            # Copy shuffled images - ensure maximum variety across all demos
             [ ! -f "wallpaper.jpg" ] && [ -n "${nogood_files[0]}" ] && cp "${nogood_files[0]}" wallpaper.jpg 2>/dev/null || true
             [ ! -f "wallpaper1.jpg" ] && [ -n "${nogood_files[1]}" ] && cp "${nogood_files[1]}" wallpaper1.jpg 2>/dev/null || true
             [ ! -f "wallpaper2.jpg" ] && [ -n "${nogood_files[2]}" ] && cp "${nogood_files[2]}" wallpaper2.jpg 2>/dev/null || true
             [ ! -f "wallpaper3.jpg" ] && [ -n "${nogood_files[3]}" ] && cp "${nogood_files[3]}" wallpaper3.jpg 2>/dev/null || true
-
-            # Use shuffled images for portrait/landscape too
-            [ ! -f "portrait.jpg" ] && [ -f "wallpaper.jpg" ] && cp "wallpaper.jpg" portrait.jpg
-            [ ! -f "landscape.jpg" ] && [ -f "wallpaper1.jpg" ] && cp "wallpaper1.jpg" landscape.jpg
-
-            info "Shuffled ${#nogood_files[@]} NoGood wallpapers - these are FIRE! 🔥"
+            [ ! -f "portrait.jpg" ] && [ -n "${nogood_files[4]}" ] && cp "${nogood_files[4]}" portrait.jpg 2>/dev/null || true
+            [ ! -f "landscape.jpg" ] && [ -n "${nogood_files[5]}" ] && cp "${nogood_files[5]}" landscape.jpg 2>/dev/null || true
+            # Additional images for demos to avoid repetition
+            [ ! -f "kitty_demo.jpg" ] && [ -n "${nogood_files[6]}" ] && cp "${nogood_files[6]}" kitty_demo.jpg 2>/dev/null || true
+            [ ! -f "slideshow1.jpg" ] && [ -n "${nogood_files[7]}" ] && cp "${nogood_files[7]}" slideshow1.jpg 2>/dev/null || true
+            [ ! -f "slideshow2.jpg" ] && [ -n "${nogood_files[8]}" ] && cp "${nogood_files[8]}" slideshow2.jpg 2>/dev/null || true
+            [ ! -f "slideshow3.jpg" ] && [ -n "${nogood_files[9]}" ] && cp "${nogood_files[9]}" slideshow3.jpg 2>/dev/null || true
         fi
     else
-        info "Downloading sample images..."
+        # Fallback to random images if NoGood wallpapers not available
         [ ! -f "wallpaper.jpg" ] && curl -sL "https://picsum.photos/1920/1080" -o wallpaper.jpg
         [ ! -f "portrait.jpg" ] && curl -sL "https://picsum.photos/1080/1920" -o portrait.jpg
         [ ! -f "landscape.jpg" ] && curl -sL "https://picsum.photos/2560/1440" -o landscape.jpg
+        [ ! -f "kitty_demo.jpg" ] && curl -sL "https://picsum.photos/1920/1080?random=1" -o kitty_demo.jpg
+        [ ! -f "slideshow1.jpg" ] && curl -sL "https://picsum.photos/1920/1080?random=2" -o slideshow1.jpg
+        [ ! -f "slideshow2.jpg" ] && curl -sL "https://picsum.photos/1080/1920?random=3" -o slideshow2.jpg
+        [ ! -f "slideshow3.jpg" ] && curl -sL "https://picsum.photos/2560/1440?random=4" -o slideshow3.jpg
+        [ ! -f "wallpaper1.jpg" ] && curl -sL "https://picsum.photos/1920/1080?random=5" -o wallpaper1.jpg
+        [ ! -f "wallpaper2.jpg" ] && curl -sL "https://picsum.photos/1920/1080?random=6" -o wallpaper2.jpg
+        [ ! -f "wallpaper3.jpg" ] && curl -sL "https://picsum.photos/1920/1080?random=7" -o wallpaper3.jpg
     fi
 
     # Create a simple SVG
     if [ ! -f "logo.svg" ]; then
-        info "Creating sample SVG..."
         cat > logo.svg <<'EOF'
 <svg width="400" height="400" xmlns="http://www.w3.org/2000/svg">
   <rect width="400" height="400" fill="#1e1e1e"/>
@@ -149,263 +173,144 @@ download_samples() {
 EOF
     fi
 
-    sleep $SLEEP_SHORT
+    # Download a sample animated GIF
+    if [ ! -f "animation.gif" ]; then
+        # Use a small, fun animated GIF (Nyan Cat or similar)
+        curl -sL "https://media.giphy.com/media/sIIhZliB2McAo/giphy.gif" -o animation.gif 2>/dev/null || true
+    fi
 }
 
 # Download Rick Roll video
 download_rickroll() {
-    banner "Downloading Rick Roll... 🎵"
-
     if [ ! -f "rickroll.mp4" ]; then
-        info "Using yt-dlp to download Never Gonna Give You Up..."
-        show_command "yt-dlp -f 'bestvideo[height<=720]+bestaudio/best[height<=720]' --merge-output-format mp4 -o rickroll.mp4 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'"
-
-        # Download with quality limit to keep file size reasonable
         yt-dlp -f 'bestvideo[height<=720]+bestaudio/best[height<=720]' \
+               --cookies-from-browser firefox \
                --merge-output-format mp4 \
                -o rickroll.mp4 \
-               'https://www.youtube.com/watch?v=dQw4w9WgXcQ' 2>&1 | grep -E "Downloading|Merging" || true
-    else
-        info "Rick Roll video already downloaded!"
+               'https://www.youtube.com/watch?v=xvFZjo5PgG0' &>/dev/null || true
     fi
-
-    sleep $SLEEP_SHORT
 }
 
-# Demo 1: Basic image viewing
+# Demo: Auto-detection
 demo_basic() {
     clear_demo
-    banner "DEMO 1: Basic Image Viewing"
-    info "Display a wallpaper with auto-detection (limited to terminal size)"
-    sleep $SLEEP_SHORT
-
+    ascii_title "AUTODETECTS BACKEND"
     show_command "showme --width $MAX_WIDTH wallpaper.jpg"
     safe_showme --width $MAX_WIDTH wallpaper.jpg
-
-    sleep $SLEEP_MEDIUM
+    sleep $SLEEP_LONG
 }
 
-# Demo 2: Kitty Graphics Protocol
+# Demo: Kitty Graphics Protocol
 demo_kitty() {
     clear_demo
-    banner "DEMO 2: Kitty Graphics Protocol (High-Res)"
-    info "Kitty backend for crisp rendering (size-limited for safety)"
-    sleep $SLEEP_SHORT
-
-    show_command "showme --backend kitty --width $MAX_WIDTH --verbose wallpaper.jpg"
-    safe_showme --backend kitty --width $MAX_WIDTH --verbose wallpaper.jpg
-
-    sleep $SLEEP_MEDIUM
+    ascii_title "KITTY GRAPHICS"
+    show_command "showme --backend kitty --center --width $MAX_WIDTH kitty_demo.jpg"
+    safe_showme --backend kitty --center --width $MAX_WIDTH kitty_demo.jpg
+    sleep $SLEEP_LONG
 }
 
-# Demo 3: Unicode rendering modes
+# Demo: Unicode rendering
 demo_unicode() {
     clear_demo
-    banner "DEMO 3: Unicode Block Rendering"
-    info "Quarter-block mode (default) - best detail"
-    sleep $SLEEP_SHORT
-
+    ascii_title "UNICODE QUARTER BLOCK" "half block supported too!"
     show_command "showme --backend unicode -p quarter --width 60 portrait.jpg"
     safe_showme --backend unicode -p quarter --width 60 portrait.jpg
-
-    sleep $SLEEP_MEDIUM
-
-    clear_demo
-    banner "DEMO 3: Unicode Block Rendering (continued)"
-    info "Half-block mode - better color accuracy"
-    sleep $SLEEP_SHORT
-
-    show_command "showme --backend unicode -p half --width 60 portrait.jpg"
-    safe_showme --backend unicode -p half --width 60 portrait.jpg
-
-    sleep $SLEEP_MEDIUM
+    sleep $SLEEP_LONG
 }
 
-# Demo 4: Image grid layout
+# Demo: Grid layout
 demo_grid() {
     clear_demo
-    banner "DEMO 4: Grid Layout - Portrait Images"
-    info "Display multiple tall images in 4x1 horizontal strip"
-    info "Perfect for those fire NoGood wallpapers! 🔥"
-    sleep $SLEEP_SHORT
+    ascii_title "GRID"
 
-    # Check if we have enough files for a grid
-    if [ ! -f "wallpaper.jpg" ]; then
-        echo -e "${RED}⚠ No images available for grid demo, skipping...${RESET}"
-        return
-    fi
-
-    # Use NoGood wallpapers if available - they're tall so 4x1 grid works best!
+    # Use NoGood wallpapers if available
     if [ -f "wallpaper1.jpg" ] && [ -f "wallpaper2.jpg" ] && [ -f "wallpaper3.jpg" ] && [ -f "wallpaper.jpg" ]; then
-        info "4 NoGood wallpapers in horizontal strip - CRISPY! 🔥"
-        show_command "showme --grid 4x1 --width $MAX_WIDTH wallpaper1.jpg wallpaper2.jpg wallpaper3.jpg wallpaper.jpg"
-        safe_showme --grid 4x1 --width $MAX_WIDTH wallpaper1.jpg wallpaper2.jpg wallpaper3.jpg wallpaper.jpg
-    elif [ -f "wallpaper1.jpg" ] && [ -f "wallpaper2.jpg" ] && [ -f "wallpaper3.jpg" ]; then
-        info "3 NoGood wallpapers in horizontal strip"
-        show_command "showme --grid 3x1 --width $MAX_WIDTH wallpaper1.jpg wallpaper2.jpg wallpaper3.jpg"
-        safe_showme --grid 3x1 --width $MAX_WIDTH wallpaper1.jpg wallpaper2.jpg wallpaper3.jpg
-    elif [ -f "wallpaper.jpg" ] && [ -f "portrait.jpg" ] && [ -f "landscape.jpg" ]; then
-        show_command "showme --grid 3x1 --width $MAX_WIDTH wallpaper.jpg portrait.jpg landscape.jpg"
-        safe_showme --grid 3x1 --width $MAX_WIDTH wallpaper.jpg portrait.jpg landscape.jpg
+        show_command "showme --backend unicode --grid 4x1 --width $MAX_WIDTH wallpaper1.jpg wallpaper2.jpg wallpaper3.jpg wallpaper.jpg"
+        safe_showme --backend unicode --grid 4x1 --width $MAX_WIDTH wallpaper1.jpg wallpaper2.jpg wallpaper3.jpg wallpaper.jpg
     else
-        # Fallback to just the wallpaper 3 times
-        show_command "showme --grid 3x1 --width $MAX_WIDTH wallpaper.jpg wallpaper.jpg wallpaper.jpg"
-        safe_showme --grid 3x1 --width $MAX_WIDTH wallpaper.jpg wallpaper.jpg wallpaper.jpg
+        show_command "showme --backend unicode --grid 3x1 --width $MAX_WIDTH wallpaper.jpg wallpaper.jpg wallpaper.jpg"
+        safe_showme --backend unicode --grid 3x1 --width $MAX_WIDTH wallpaper.jpg wallpaper.jpg wallpaper.jpg
     fi
 
     sleep $SLEEP_LONG
 }
 
-# Demo 5: SVG rendering
+# Demo: SVG rendering
 demo_svg() {
     clear_demo
-    banner "DEMO 5: SVG Vector Graphics"
-    info "Render SVG files directly in terminal"
-    sleep $SLEEP_SHORT
-
-    show_command "showme --width 50 logo.svg"
-    safe_showme --width 50 logo.svg
-
-    sleep $SLEEP_MEDIUM
+    ascii_title "SVG"
+    show_command "showme --center --width 50 logo.svg"
+    safe_showme --center --width 50 logo.svg
+    sleep $SLEEP_LONG
 }
 
-# Demo 6: Image sizing options
-demo_sizing() {
-    clear_demo
-    banner "DEMO 6: Custom Sizing"
-    info "Fit image to specific dimensions (40 columns x 20 rows)"
-    sleep $SLEEP_SHORT
+# Removed - positioning is now implicit in other demos
 
-    show_command "showme --width 40 --height 20 landscape.jpg"
-    safe_showme --width 40 --height 20 landscape.jpg
-
-    sleep $SLEEP_MEDIUM
-
-    clear_demo
-    banner "DEMO 6: Custom Sizing (continued)"
-    info "Fit to width only"
-    sleep $SLEEP_SHORT
-
-    show_command "showme --fit-width --width 70 landscape.jpg"
-    safe_showme --fit-width --width 70 landscape.jpg
-
-    sleep $SLEEP_MEDIUM
-}
-
-# Demo 7: Slideshow
+# Demo: Slideshow
 demo_slideshow() {
     clear_demo
-    banner "DEMO 7: Slideshow with Titles"
-    info "Automatic slideshow with 2-second delay and image info"
-    sleep $SLEEP_SHORT
+    ascii_title "SLIDESHOW"
 
-    # Check which files we have
+    # Use dedicated slideshow images for variety
     FILES=""
-    [ -f "wallpaper.jpg" ] && FILES="$FILES wallpaper.jpg"
-    [ -f "portrait.jpg" ] && FILES="$FILES portrait.jpg"
-    [ -f "landscape.jpg" ] && FILES="$FILES landscape.jpg"
+    [ -f "slideshow1.jpg" ] && FILES="$FILES slideshow1.jpg"
+    [ -f "slideshow2.jpg" ] && FILES="$FILES slideshow2.jpg"
+    [ -f "slideshow3.jpg" ] && FILES="$FILES slideshow3.jpg"
 
-    if [ -z "$FILES" ]; then
-        echo -e "${RED}⚠ No images available for slideshow, skipping...${RESET}"
+    if [ -n "$FILES" ]; then
+        show_command "showme --center --wait 1.5s --title '%f' --width 60$FILES"
+        safe_showme --center --wait 1.5s --title '%f' --width 60 $FILES
+    fi
+
+    sleep $SLEEP_LONG
+}
+
+# Demo: Animated GIF
+demo_gif() {
+    clear_demo
+    ascii_title "ANIMATED GIF"
+
+    if [ ! -f "animation.gif" ]; then
         return
     fi
 
-    show_command "showme --wait 2 --title '%f (%wx%h)' --width 60$FILES"
-    safe_showme --wait 2 --title '%f (%wx%h)' --width 60 $FILES
-
-    sleep $SLEEP_SHORT
+    show_command "showme --center --loops 2 --alternate-screen animation.gif"
+    safe_showme --center --loops 2 animation.gif
+    sleep $SLEEP_LONG
 }
 
-# Demo 8: Video playback (Rick Roll!)
+# Demo: Video playback
 demo_video() {
     clear_demo
-    banner "DEMO 8: Video Playback 🎵"
+    ascii_title "VIDEO"
 
-    # Check if video file exists
     if [ ! -f "rickroll.mp4" ]; then
-        echo -e "${YELLOW}⚠ Rick Roll video not found, skipping video demo...${RESET}"
-        info "To enable video demo: Install yt-dlp and re-run"
-        sleep $SLEEP_SHORT
         return
     fi
 
-    info "Never Gonna Give You Up - Rick Astley"
-    info "Playing first 5 seconds..."
-    sleep $SLEEP_MEDIUM
-
-    show_command "showme --duration 5s --width 60 rickroll.mp4"
-    if safe_showme --duration 5s --width 60 rickroll.mp4; then
-        info "You just got Rick Rolled! 🎸"
-    else
-        echo -e "${YELLOW}⚠ Video playback failed (video feature may not be available)${RESET}"
-    fi
-
-    sleep $SLEEP_MEDIUM
-}
-
-# Demo 9: Advanced features
-demo_advanced() {
-    clear_demo
-    banner "DEMO 9: Advanced Features"
-    info "Center image with custom background"
-    sleep $SLEEP_SHORT
-
-    show_command "showme --center --background '#1e1e2e' --width 50 logo.svg"
-    safe_showme --center --background '#1e1e2e' --width 50 logo.svg
-
-    sleep $SLEEP_MEDIUM
-}
-
-# Demo 10: Kitty vs Unicode comparison
-demo_backends() {
-    clear_demo
-    banner "DEMO 10: Kitty vs Unicode Rendering"
-
-    info "1. Kitty Graphics Protocol - Full Resolution 🔥"
-    info "   Sharp, crisp rendering using terminal graphics"
-    sleep $SLEEP_SHORT
-    show_command "showme --backend kitty --width 60 portrait.jpg"
-    safe_showme --backend kitty --width 60 portrait.jpg
+    show_command "showme --center --duration 5s rickroll.mp4"
+    safe_showme --center --duration 5s rickroll.mp4
     sleep $SLEEP_LONG
-
-    clear_demo
-    banner "DEMO 10: Kitty vs Unicode (continued)"
-    info "2. Unicode Blocks - Universal Fallback"
-    info "   Works everywhere, but lower resolution"
-    sleep $SLEEP_SHORT
-    show_command "showme --backend unicode -p quarter --width 60 portrait.jpg"
-    safe_showme --backend unicode -p quarter --width 60 portrait.jpg
-    sleep $SLEEP_LONG
-
-    info ""
-    info "Notice the difference? Kitty protocol is WAY crisper! 🔥"
-    sleep $SLEEP_MEDIUM
 }
+
+# Removed - redundant demos
 
 # Main demo sequence
 main() {
     clear
 
-    banner "🎬 showme - Terminal Media Viewer Demo 🎬"
-    info "Showcasing powerful terminal graphics capabilities"
-    info ""
-    info "✨ Safe mode enabled: Images limited to $MAX_WIDTH columns max"
-    info "🛡️  Terminal reset on exit/interrupt (Ctrl+C safe)"
-    info "🔥 Using NoGood wallpapers if available!"
-    sleep $SLEEP_LONG
+    ascii_title "SHOWME DEMO"
+    sleep 1
 
     setup_demo
     download_samples
 
-    # Check if user wants to download Rick Roll
+    # Check if user wants to download Rick Roll (quietly)
     if command -v yt-dlp &> /dev/null; then
         download_rickroll
         HAS_VIDEO=true
     else
-        info "yt-dlp not found, skipping video demo"
-        info "Install with: pip install yt-dlp"
         HAS_VIDEO=false
-        sleep $SLEEP_MEDIUM
     fi
 
     # Run demos
@@ -414,33 +319,17 @@ main() {
     demo_unicode
     demo_grid
     demo_svg
-    demo_sizing
     demo_slideshow
+    demo_gif
 
     if [ "$HAS_VIDEO" = true ]; then
         demo_video
     fi
 
-    demo_advanced
-    demo_backends
-
     # Finale
-    banner "🎉 Demo Complete! 🎉"
-    info "showme - View images, videos, PDFs, and SVGs in your terminal"
-    info ""
-    info "Features demonstrated:"
-    echo "  • Multiple rendering backends (Kitty, iTerm2, Unicode)"
-    echo "  • High-resolution graphics with Kitty protocol"
-    echo "  • Grid layouts for multiple images"
-    echo "  • SVG vector graphics support"
-    echo "  • Video playback with ffmpeg"
-    echo "  • Custom sizing and positioning"
-    echo "  • Slideshow mode with titles"
-    echo ""
-    info "Installation: cargo install showme"
-    info "Repository: https://github.com/sandwichfarm/showme"
-    echo ""
-    sleep $SLEEP_LONG
+    clear
+    ascii_title "GO OUTSIDE"
+    sleep 1
 
     # Cleanup option
     echo -e "${YELLOW}Clean up demo files in $DEMO_DIR? [y/N]${RESET} "

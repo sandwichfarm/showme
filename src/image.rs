@@ -142,7 +142,7 @@ fn load_from_stdin(rotation_mode: RotationMode, auto_crop: bool, crop_border: u3
                     let millis = if denom == 0 {
                         0
                     } else {
-                        (1000f32 * (numer as f32) / (denom as f32)).round() as u64
+                        ((numer as f32) / (denom as f32)).round() as u64
                     };
                     Frame {
                         pixels: frame.into_buffer(),
@@ -216,7 +216,7 @@ fn load_gif(path: &Path, _rotation_mode: RotationMode, _auto_crop: bool, _crop_b
             let millis = if denom == 0 {
                 0
             } else {
-                (1000f32 * (numer as f32) / (denom as f32)).round() as u64
+                ((numer as f32) / (denom as f32)).round() as u64
             };
             Frame {
                 pixels: frame.into_buffer(),
