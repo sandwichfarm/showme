@@ -4,13 +4,24 @@
 # A comprehensive showcase of showme's capabilities
 #
 
-set -e
+# Don't crash on errors - handle them gracefully
+set +e
+
+# Reset terminal on exit/interrupt
+cleanup() {
+    echo ""
+    echo "Resetting terminal..."
+    tput reset 2>/dev/null || reset 2>/dev/null || true
+    echo "Demo stopped!"
+}
+trap cleanup EXIT INT TERM
 
 # Colors for text output
 CYAN='\033[0;36m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 MAGENTA='\033[0;35m'
+RED='\033[0;31m'
 RESET='\033[0m'
 
 # Demo configuration
@@ -18,6 +29,10 @@ DEMO_DIR="/tmp/showme-demo"
 SLEEP_SHORT=2
 SLEEP_MEDIUM=3
 SLEEP_LONG=4
+
+# Safe mode: limit image sizes
+MAX_WIDTH=80
+MAX_HEIGHT=40
 
 # Banner function
 banner() {
@@ -39,6 +54,23 @@ info() {
 show_command() {
     echo -e "${MAGENTA}$ $1${RESET}"
     sleep 1
+}
+
+# Safe showme execution with error handling
+safe_showme() {
+    if showme "$@" 2>/dev/null; then
+        return 0
+    else
+        echo -e "${RED}⚠ Demo command failed, continuing...${RESET}"
+        sleep 1
+        return 1
+    fi
+}
+
+# Clear screen between demos
+clear_demo() {
+    sleep 0.5
+    clear
 }
 
 # Setup demo directory
@@ -121,62 +153,68 @@ download_rickroll() {
 
 # Demo 1: Basic image viewing
 demo_basic() {
+    clear_demo
     banner "DEMO 1: Basic Image Viewing"
-    info "Display a high-resolution wallpaper with auto-detection"
+    info "Display a wallpaper with auto-detection (limited to terminal size)"
     sleep $SLEEP_SHORT
 
-    show_command "showme wallpaper.jpg"
-    showme wallpaper.jpg
+    show_command "showme --width $MAX_WIDTH wallpaper.jpg"
+    safe_showme --width $MAX_WIDTH wallpaper.jpg
 
     sleep $SLEEP_MEDIUM
 }
 
 # Demo 2: Kitty Graphics Protocol
 demo_kitty() {
+    clear_demo
     banner "DEMO 2: Kitty Graphics Protocol (High-Res)"
-    info "Force Kitty backend for crisp, full-resolution rendering"
+    info "Kitty backend for crisp rendering (size-limited for safety)"
     sleep $SLEEP_SHORT
 
-    show_command "showme --backend kitty --verbose wallpaper.jpg"
-    showme --backend kitty --verbose wallpaper.jpg
+    show_command "showme --backend kitty --width $MAX_WIDTH --verbose wallpaper.jpg"
+    safe_showme --backend kitty --width $MAX_WIDTH --verbose wallpaper.jpg
 
     sleep $SLEEP_MEDIUM
 }
 
 # Demo 3: Unicode rendering modes
 demo_unicode() {
+    clear_demo
     banner "DEMO 3: Unicode Block Rendering"
     info "Quarter-block mode (default) - best detail"
     sleep $SLEEP_SHORT
 
-    show_command "showme --backend unicode -p quarter portrait.jpg"
-    showme --backend unicode -p quarter portrait.jpg
+    show_command "showme --backend unicode -p quarter --width 60 portrait.jpg"
+    safe_showme --backend unicode -p quarter --width 60 portrait.jpg
 
     sleep $SLEEP_MEDIUM
 
+    clear_demo
+    banner "DEMO 3: Unicode Block Rendering (continued)"
     info "Half-block mode - better color accuracy"
     sleep $SLEEP_SHORT
 
-    show_command "showme --backend unicode -p half portrait.jpg"
-    showme --backend unicode -p half portrait.jpg
+    show_command "showme --backend unicode -p half --width 60 portrait.jpg"
+    safe_showme --backend unicode -p half --width 60 portrait.jpg
 
     sleep $SLEEP_MEDIUM
 }
 
 # Demo 4: Image grid layout
 demo_grid() {
+    clear_demo
     banner "DEMO 4: Grid Layout"
     info "Display multiple images in a 2x2 grid"
     sleep $SLEEP_SHORT
 
     # Use NoGood wallpapers if available for extra fire
     if [ -f "wallpaper1.jpg" ] && [ -f "wallpaper2.jpg" ] && [ -f "wallpaper3.jpg" ]; then
-        show_command "showme --grid 2 wallpaper1.jpg wallpaper2.jpg wallpaper3.jpg wallpaper.jpg"
-        showme --grid 2 wallpaper1.jpg wallpaper2.jpg wallpaper3.jpg wallpaper.jpg
+        show_command "showme --grid 2 --width $MAX_WIDTH wallpaper1.jpg wallpaper2.jpg wallpaper3.jpg wallpaper.jpg"
+        safe_showme --grid 2 --width $MAX_WIDTH wallpaper1.jpg wallpaper2.jpg wallpaper3.jpg wallpaper.jpg
         info "NoGood wallpapers looking CRISP in grid mode! 🔥"
     else
-        show_command "showme --grid 2 wallpaper.jpg portrait.jpg landscape.jpg wallpaper.jpg"
-        showme --grid 2 wallpaper.jpg portrait.jpg landscape.jpg wallpaper.jpg
+        show_command "showme --grid 2 --width $MAX_WIDTH wallpaper.jpg portrait.jpg landscape.jpg wallpaper.jpg"
+        safe_showme --grid 2 --width $MAX_WIDTH wallpaper.jpg portrait.jpg landscape.jpg wallpaper.jpg
     fi
 
     sleep $SLEEP_LONG
@@ -184,57 +222,63 @@ demo_grid() {
 
 # Demo 5: SVG rendering
 demo_svg() {
+    clear_demo
     banner "DEMO 5: SVG Vector Graphics"
     info "Render SVG files directly in terminal"
     sleep $SLEEP_SHORT
 
-    show_command "showme logo.svg"
-    showme logo.svg
+    show_command "showme --width 50 logo.svg"
+    safe_showme --width 50 logo.svg
 
     sleep $SLEEP_MEDIUM
 }
 
 # Demo 6: Image sizing options
 demo_sizing() {
+    clear_demo
     banner "DEMO 6: Custom Sizing"
     info "Fit image to specific dimensions (40 columns x 20 rows)"
     sleep $SLEEP_SHORT
 
     show_command "showme --width 40 --height 20 landscape.jpg"
-    showme --width 40 --height 20 landscape.jpg
+    safe_showme --width 40 --height 20 landscape.jpg
 
     sleep $SLEEP_MEDIUM
 
+    clear_demo
+    banner "DEMO 6: Custom Sizing (continued)"
     info "Fit to width only"
     sleep $SLEEP_SHORT
 
-    show_command "showme --fit-width landscape.jpg"
-    showme --fit-width landscape.jpg
+    show_command "showme --fit-width --width 70 landscape.jpg"
+    safe_showme --fit-width --width 70 landscape.jpg
 
     sleep $SLEEP_MEDIUM
 }
 
 # Demo 7: Slideshow
 demo_slideshow() {
+    clear_demo
     banner "DEMO 7: Slideshow with Titles"
-    info "Automatic slideshow with 3-second delay and image info"
+    info "Automatic slideshow with 2-second delay and image info"
     sleep $SLEEP_SHORT
 
-    show_command "showme --wait 3 --title '%f (%wx%h)' wallpaper.jpg portrait.jpg landscape.jpg"
-    showme --wait 3 --title '%f (%wx%h)' wallpaper.jpg portrait.jpg landscape.jpg
+    show_command "showme --wait 2 --title '%f (%wx%h)' --width 60 wallpaper.jpg portrait.jpg landscape.jpg"
+    safe_showme --wait 2 --title '%f (%wx%h)' --width 60 wallpaper.jpg portrait.jpg landscape.jpg
 
     sleep $SLEEP_SHORT
 }
 
 # Demo 8: Video playback (Rick Roll!)
 demo_video() {
+    clear_demo
     banner "DEMO 8: Video Playback 🎵"
     info "Never Gonna Give You Up - Rick Astley"
-    info "Playing first 10 seconds..."
+    info "Playing first 5 seconds..."
     sleep $SLEEP_MEDIUM
 
-    show_command "showme --duration 10s rickroll.mp4"
-    showme --duration 10s rickroll.mp4
+    show_command "showme --duration 5s --width 60 rickroll.mp4"
+    safe_showme --duration 5s --width 60 rickroll.mp4
 
     sleep $SLEEP_SHORT
 
@@ -244,36 +288,42 @@ demo_video() {
 
 # Demo 9: Advanced features
 demo_advanced() {
+    clear_demo
     banner "DEMO 9: Advanced Features"
     info "Center image with custom background"
     sleep $SLEEP_SHORT
 
-    show_command "showme --center --background '#1e1e2e' --width 60 logo.svg"
-    showme --center --background '#1e1e2e' --width 60 logo.svg
+    show_command "showme --center --background '#1e1e2e' --width 50 logo.svg"
+    safe_showme --center --background '#1e1e2e' --width 50 logo.svg
 
     sleep $SLEEP_MEDIUM
 }
 
 # Demo 10: Multiple backends comparison
 demo_backends() {
+    clear_demo
     banner "DEMO 10: Backend Comparison"
 
-    info "1. Kitty Graphics (full resolution)"
+    info "1. Kitty Graphics (size-limited)"
     sleep $SLEEP_SHORT
-    show_command "showme --backend kitty portrait.jpg"
-    showme --backend kitty portrait.jpg
+    show_command "showme --backend kitty --width 60 portrait.jpg"
+    safe_showme --backend kitty --width 60 portrait.jpg
     sleep $SLEEP_MEDIUM
 
+    clear_demo
+    banner "DEMO 10: Backend Comparison (continued)"
     info "2. iTerm2 Inline Images"
     sleep $SLEEP_SHORT
-    show_command "showme --backend iterm2 portrait.jpg"
-    showme --backend iterm2 portrait.jpg
+    show_command "showme --backend iterm2 --width 60 portrait.jpg"
+    safe_showme --backend iterm2 --width 60 portrait.jpg
     sleep $SLEEP_MEDIUM
 
+    clear_demo
+    banner "DEMO 10: Backend Comparison (continued)"
     info "3. Unicode Blocks (universal)"
     sleep $SLEEP_SHORT
-    show_command "showme --backend unicode portrait.jpg"
-    showme --backend unicode portrait.jpg
+    show_command "showme --backend unicode --width 60 portrait.jpg"
+    safe_showme --backend unicode --width 60 portrait.jpg
     sleep $SLEEP_MEDIUM
 }
 
@@ -283,6 +333,10 @@ main() {
 
     banner "🎬 showme - Terminal Media Viewer Demo 🎬"
     info "Showcasing powerful terminal graphics capabilities"
+    info ""
+    info "✨ Safe mode enabled: Images limited to $MAX_WIDTH columns max"
+    info "🛡️  Terminal reset on exit/interrupt (Ctrl+C safe)"
+    info "🔥 Using NoGood wallpapers if available!"
     sleep $SLEEP_LONG
 
     setup_demo
