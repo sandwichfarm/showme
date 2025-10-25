@@ -58,11 +58,22 @@ show_command() {
 
 # Safe showme execution with error handling
 safe_showme() {
-    if showme "$@" 2>/dev/null; then
+    local output
+    local exit_code
+
+    # Capture both stdout and stderr
+    output=$(showme "$@" 2>&1)
+    exit_code=$?
+
+    if [ $exit_code -eq 0 ]; then
+        echo "$output"
         return 0
     else
-        echo -e "${RED}⚠ Demo command failed, continuing...${RESET}"
-        sleep 1
+        echo -e "${RED}⚠ Command failed:${RESET} showme $*"
+        echo -e "${YELLOW}Error output:${RESET}"
+        echo "$output" | head -5
+        echo -e "${YELLOW}Continuing with demo...${RESET}"
+        sleep 2
         return 1
     fi
 }
@@ -207,14 +218,24 @@ demo_grid() {
     info "Display multiple images in a 2x2 grid"
     sleep $SLEEP_SHORT
 
+    # Check if we have enough files for a grid
+    if [ ! -f "wallpaper.jpg" ]; then
+        echo -e "${RED}⚠ No images available for grid demo, skipping...${RESET}"
+        return
+    fi
+
     # Use NoGood wallpapers if available for extra fire
-    if [ -f "wallpaper1.jpg" ] && [ -f "wallpaper2.jpg" ] && [ -f "wallpaper3.jpg" ]; then
+    if [ -f "wallpaper1.jpg" ] && [ -f "wallpaper2.jpg" ] && [ -f "wallpaper3.jpg" ] && [ -f "wallpaper.jpg" ]; then
         show_command "showme --grid 2 --width $MAX_WIDTH wallpaper1.jpg wallpaper2.jpg wallpaper3.jpg wallpaper.jpg"
         safe_showme --grid 2 --width $MAX_WIDTH wallpaper1.jpg wallpaper2.jpg wallpaper3.jpg wallpaper.jpg
         info "NoGood wallpapers looking CRISP in grid mode! 🔥"
-    else
+    elif [ -f "wallpaper.jpg" ] && [ -f "portrait.jpg" ] && [ -f "landscape.jpg" ]; then
         show_command "showme --grid 2 --width $MAX_WIDTH wallpaper.jpg portrait.jpg landscape.jpg wallpaper.jpg"
         safe_showme --grid 2 --width $MAX_WIDTH wallpaper.jpg portrait.jpg landscape.jpg wallpaper.jpg
+    else
+        # Fallback to just the wallpaper 4 times
+        show_command "showme --grid 2 --width $MAX_WIDTH wallpaper.jpg wallpaper.jpg wallpaper.jpg wallpaper.jpg"
+        safe_showme --grid 2 --width $MAX_WIDTH wallpaper.jpg wallpaper.jpg wallpaper.jpg wallpaper.jpg
     fi
 
     sleep $SLEEP_LONG
@@ -263,8 +284,19 @@ demo_slideshow() {
     info "Automatic slideshow with 2-second delay and image info"
     sleep $SLEEP_SHORT
 
-    show_command "showme --wait 2 --title '%f (%wx%h)' --width 60 wallpaper.jpg portrait.jpg landscape.jpg"
-    safe_showme --wait 2 --title '%f (%wx%h)' --width 60 wallpaper.jpg portrait.jpg landscape.jpg
+    # Check which files we have
+    FILES=""
+    [ -f "wallpaper.jpg" ] && FILES="$FILES wallpaper.jpg"
+    [ -f "portrait.jpg" ] && FILES="$FILES portrait.jpg"
+    [ -f "landscape.jpg" ] && FILES="$FILES landscape.jpg"
+
+    if [ -z "$FILES" ]; then
+        echo -e "${RED}⚠ No images available for slideshow, skipping...${RESET}"
+        return
+    fi
+
+    show_command "showme --wait 2 --title '%f (%wx%h)' --width 60$FILES"
+    safe_showme --wait 2 --title '%f (%wx%h)' --width 60 $FILES
 
     sleep $SLEEP_SHORT
 }
@@ -273,16 +305,26 @@ demo_slideshow() {
 demo_video() {
     clear_demo
     banner "DEMO 8: Video Playback 🎵"
+
+    # Check if video file exists
+    if [ ! -f "rickroll.mp4" ]; then
+        echo -e "${YELLOW}⚠ Rick Roll video not found, skipping video demo...${RESET}"
+        info "To enable video demo: Install yt-dlp and re-run"
+        sleep $SLEEP_SHORT
+        return
+    fi
+
     info "Never Gonna Give You Up - Rick Astley"
     info "Playing first 5 seconds..."
     sleep $SLEEP_MEDIUM
 
     show_command "showme --duration 5s --width 60 rickroll.mp4"
-    safe_showme --duration 5s --width 60 rickroll.mp4
+    if safe_showme --duration 5s --width 60 rickroll.mp4; then
+        info "You just got Rick Rolled! 🎸"
+    else
+        echo -e "${YELLOW}⚠ Video playback failed (video feature may not be available)${RESET}"
+    fi
 
-    sleep $SLEEP_SHORT
-
-    info "You just got Rick Rolled! 🎸"
     sleep $SLEEP_MEDIUM
 }
 
