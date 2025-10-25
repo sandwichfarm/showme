@@ -101,25 +101,35 @@ download_samples() {
     NOGOOD_DIR="/home/sandwich/Downloads/NoGood - Wallpaper Pack 03"
 
     if [ -d "$NOGOOD_DIR" ]; then
-        info "Found NoGood Wallpaper Pack! Using premium wallpapers 🎨"
+        info "Found NoGood Wallpaper Pack! Shuffling for variety 🎲"
 
-        # Copy a few different ones for variety
-        [ ! -f "wallpaper1.jpg" ] && cp "$NOGOOD_DIR/NoGood_WallpaperPack_001.jpg" wallpaper1.jpg 2>/dev/null || true
-        [ ! -f "wallpaper2.jpg" ] && cp "$NOGOOD_DIR/NoGood_WallpaperPack_002.jpg" wallpaper2.jpg 2>/dev/null || true
-        [ ! -f "wallpaper3.jpg" ] && cp "$NOGOOD_DIR/NoGood_WallpaperPack_003.jpg" wallpaper3.jpg 2>/dev/null || true
+        # Get all available NoGood wallpapers and shuffle them
+        local nogood_files=()
+        for f in "$NOGOOD_DIR"/NoGood_WallpaperPack_*.jpg; do
+            [ -f "$f" ] && nogood_files+=("$f")
+        done
 
-        # Use first one as main wallpaper
-        [ ! -f "wallpaper.jpg" ] && cp "$NOGOOD_DIR/NoGood_WallpaperPack_001.jpg" wallpaper.jpg
+        if [ ${#nogood_files[@]} -gt 0 ]; then
+            # Shuffle the array (Fisher-Yates shuffle)
+            for ((i=${#nogood_files[@]}-1; i>0; i--)); do
+                j=$((RANDOM % (i+1)))
+                temp="${nogood_files[i]}"
+                nogood_files[i]="${nogood_files[j]}"
+                nogood_files[j]="$temp"
+            done
 
-        # These are portrait, perfect for portrait demo
-        [ ! -f "portrait.jpg" ] && cp "$NOGOOD_DIR/NoGood_WallpaperPack_001.jpg" portrait.jpg
+            # Copy first 4 shuffled images
+            [ ! -f "wallpaper.jpg" ] && [ -n "${nogood_files[0]}" ] && cp "${nogood_files[0]}" wallpaper.jpg 2>/dev/null || true
+            [ ! -f "wallpaper1.jpg" ] && [ -n "${nogood_files[1]}" ] && cp "${nogood_files[1]}" wallpaper1.jpg 2>/dev/null || true
+            [ ! -f "wallpaper2.jpg" ] && [ -n "${nogood_files[2]}" ] && cp "${nogood_files[2]}" wallpaper2.jpg 2>/dev/null || true
+            [ ! -f "wallpaper3.jpg" ] && [ -n "${nogood_files[3]}" ] && cp "${nogood_files[3]}" wallpaper3.jpg 2>/dev/null || true
 
-        # Create a symlink for landscape demo (or copy another)
-        if [ -f "$NOGOOD_DIR/NoGood_WallpaperPack_002.jpg" ]; then
-            [ ! -f "landscape.jpg" ] && cp "$NOGOOD_DIR/NoGood_WallpaperPack_002.jpg" landscape.jpg
+            # Use shuffled images for portrait/landscape too
+            [ ! -f "portrait.jpg" ] && [ -f "wallpaper.jpg" ] && cp "wallpaper.jpg" portrait.jpg
+            [ ! -f "landscape.jpg" ] && [ -f "wallpaper1.jpg" ] && cp "wallpaper1.jpg" landscape.jpg
+
+            info "Shuffled ${#nogood_files[@]} NoGood wallpapers - these are FIRE! 🔥"
         fi
-
-        info "Using premium NoGood wallpapers - these are FIRE! 🔥"
     else
         info "Downloading sample images..."
         [ ! -f "wallpaper.jpg" ] && curl -sL "https://picsum.photos/1920/1080" -o wallpaper.jpg
@@ -214,8 +224,9 @@ demo_unicode() {
 # Demo 4: Image grid layout
 demo_grid() {
     clear_demo
-    banner "DEMO 4: Grid Layout"
-    info "Display multiple images in a 2x2 grid"
+    banner "DEMO 4: Grid Layout - Portrait Images"
+    info "Display multiple tall images in 4x1 horizontal strip"
+    info "Perfect for those fire NoGood wallpapers! 🔥"
     sleep $SLEEP_SHORT
 
     # Check if we have enough files for a grid
@@ -224,18 +235,22 @@ demo_grid() {
         return
     fi
 
-    # Use NoGood wallpapers if available for extra fire
+    # Use NoGood wallpapers if available - they're tall so 4x1 grid works best!
     if [ -f "wallpaper1.jpg" ] && [ -f "wallpaper2.jpg" ] && [ -f "wallpaper3.jpg" ] && [ -f "wallpaper.jpg" ]; then
-        show_command "showme --grid 2 --width $MAX_WIDTH wallpaper1.jpg wallpaper2.jpg wallpaper3.jpg wallpaper.jpg"
-        safe_showme --grid 2 --width $MAX_WIDTH wallpaper1.jpg wallpaper2.jpg wallpaper3.jpg wallpaper.jpg
-        info "NoGood wallpapers looking CRISP in grid mode! 🔥"
+        info "4 NoGood wallpapers in horizontal strip - CRISPY! 🔥"
+        show_command "showme --grid 4x1 --width $MAX_WIDTH wallpaper1.jpg wallpaper2.jpg wallpaper3.jpg wallpaper.jpg"
+        safe_showme --grid 4x1 --width $MAX_WIDTH wallpaper1.jpg wallpaper2.jpg wallpaper3.jpg wallpaper.jpg
+    elif [ -f "wallpaper1.jpg" ] && [ -f "wallpaper2.jpg" ] && [ -f "wallpaper3.jpg" ]; then
+        info "3 NoGood wallpapers in horizontal strip"
+        show_command "showme --grid 3x1 --width $MAX_WIDTH wallpaper1.jpg wallpaper2.jpg wallpaper3.jpg"
+        safe_showme --grid 3x1 --width $MAX_WIDTH wallpaper1.jpg wallpaper2.jpg wallpaper3.jpg
     elif [ -f "wallpaper.jpg" ] && [ -f "portrait.jpg" ] && [ -f "landscape.jpg" ]; then
-        show_command "showme --grid 2 --width $MAX_WIDTH wallpaper.jpg portrait.jpg landscape.jpg wallpaper.jpg"
-        safe_showme --grid 2 --width $MAX_WIDTH wallpaper.jpg portrait.jpg landscape.jpg wallpaper.jpg
+        show_command "showme --grid 3x1 --width $MAX_WIDTH wallpaper.jpg portrait.jpg landscape.jpg"
+        safe_showme --grid 3x1 --width $MAX_WIDTH wallpaper.jpg portrait.jpg landscape.jpg
     else
-        # Fallback to just the wallpaper 4 times
-        show_command "showme --grid 2 --width $MAX_WIDTH wallpaper.jpg wallpaper.jpg wallpaper.jpg wallpaper.jpg"
-        safe_showme --grid 2 --width $MAX_WIDTH wallpaper.jpg wallpaper.jpg wallpaper.jpg wallpaper.jpg
+        # Fallback to just the wallpaper 3 times
+        show_command "showme --grid 3x1 --width $MAX_WIDTH wallpaper.jpg wallpaper.jpg wallpaper.jpg"
+        safe_showme --grid 3x1 --width $MAX_WIDTH wallpaper.jpg wallpaper.jpg wallpaper.jpg
     fi
 
     sleep $SLEEP_LONG
@@ -341,31 +356,29 @@ demo_advanced() {
     sleep $SLEEP_MEDIUM
 }
 
-# Demo 10: Multiple backends comparison
+# Demo 10: Kitty vs Unicode comparison
 demo_backends() {
     clear_demo
-    banner "DEMO 10: Backend Comparison"
+    banner "DEMO 10: Kitty vs Unicode Rendering"
 
-    info "1. Kitty Graphics (size-limited)"
+    info "1. Kitty Graphics Protocol - Full Resolution 🔥"
+    info "   Sharp, crisp rendering using terminal graphics"
     sleep $SLEEP_SHORT
     show_command "showme --backend kitty --width 60 portrait.jpg"
     safe_showme --backend kitty --width 60 portrait.jpg
-    sleep $SLEEP_MEDIUM
+    sleep $SLEEP_LONG
 
     clear_demo
-    banner "DEMO 10: Backend Comparison (continued)"
-    info "2. iTerm2 Inline Images"
+    banner "DEMO 10: Kitty vs Unicode (continued)"
+    info "2. Unicode Blocks - Universal Fallback"
+    info "   Works everywhere, but lower resolution"
     sleep $SLEEP_SHORT
-    show_command "showme --backend iterm2 --width 60 portrait.jpg"
-    safe_showme --backend iterm2 --width 60 portrait.jpg
-    sleep $SLEEP_MEDIUM
+    show_command "showme --backend unicode -p quarter --width 60 portrait.jpg"
+    safe_showme --backend unicode -p quarter --width 60 portrait.jpg
+    sleep $SLEEP_LONG
 
-    clear_demo
-    banner "DEMO 10: Backend Comparison (continued)"
-    info "3. Unicode Blocks (universal)"
-    sleep $SLEEP_SHORT
-    show_command "showme --backend unicode --width 60 portrait.jpg"
-    safe_showme --backend unicode --width 60 portrait.jpg
+    info ""
+    info "Notice the difference? Kitty protocol is WAY crisper! 🔥"
     sleep $SLEEP_MEDIUM
 }
 
