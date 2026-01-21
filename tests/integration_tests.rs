@@ -12,7 +12,11 @@ fn test_config_with_all_options() {
             width_cells: Some(100),
             height_cells: Some(50),
             fit_width: false,
+            fit_height: false,
             upscale: true,
+            upscale_integer: false,
+            width_stretch: 2.0,
+            antialias: true,
         },
         grid: None,
         loop_forever: false,
@@ -21,6 +25,7 @@ fn test_config_with_all_options() {
         frame_offset: 10,
         max_duration: Some(std::time::Duration::from_secs(5)),
         quiet: false,
+        verbose: false,
         clear_between: false,
         clear_once: true,
         wait_between_images: Some(std::time::Duration::from_millis(500)),
@@ -28,11 +33,22 @@ fn test_config_with_all_options() {
         title_format: Some(String::from("%f")),
         center: true,
         alternate_screen: true,
+        hide_cursor: false,
         background: showme::config::BackgroundColor::Auto,
         pattern_color: None,
         pattern_size: 1,
         auto_crop: false,
         crop_border: 0,
+        output_file: None,
+        use_8bit_color: false,
+        threads: None,
+        compress_level: 1,
+        force_video: false,
+        force_image: false,
+        scroll_animation: false,
+        scroll_delay: std::time::Duration::from_millis(60),
+        scroll_dx: 1,
+        scroll_dy: 0,
     };
 
     assert!(config.validate());
@@ -59,6 +75,7 @@ fn test_config_validation_empty_inputs() {
         frame_offset: 0,
         max_duration: None,
         quiet: false,
+        verbose: false,
         clear_between: false,
         clear_once: false,
         wait_between_images: None,
@@ -66,11 +83,22 @@ fn test_config_validation_empty_inputs() {
         title_format: None,
         center: false,
         alternate_screen: false,
+        hide_cursor: false,
         background: showme::config::BackgroundColor::Auto,
         pattern_color: None,
         pattern_size: 1,
         auto_crop: false,
         crop_border: 0,
+        output_file: None,
+        use_8bit_color: false,
+        threads: None,
+        compress_level: 1,
+        force_video: false,
+        force_image: false,
+        scroll_animation: false,
+        scroll_delay: std::time::Duration::from_millis(60),
+        scroll_dx: 1,
+        scroll_dy: 0,
     };
 
     assert!(!config.validate());
@@ -92,6 +120,7 @@ fn test_animation_control_combinations() {
         frame_offset: 10,
         max_duration: Some(std::time::Duration::from_secs(10)),
         quiet: false,
+        verbose: false,
         clear_between: false,
         clear_once: false,
         wait_between_images: None,
@@ -99,11 +128,22 @@ fn test_animation_control_combinations() {
         title_format: None,
         center: false,
         alternate_screen: false,
+        hide_cursor: false,
         background: showme::config::BackgroundColor::Auto,
         pattern_color: None,
         pattern_size: 1,
         auto_crop: false,
         crop_border: 0,
+        output_file: None,
+        use_8bit_color: false,
+        threads: None,
+        compress_level: 1,
+        force_video: false,
+        force_image: false,
+        scroll_animation: false,
+        scroll_delay: std::time::Duration::from_millis(60),
+        scroll_dx: 1,
+        scroll_dy: 0,
     };
 
     assert!(config.validate());
@@ -128,6 +168,7 @@ fn test_infinite_loops() {
         frame_offset: 0,
         max_duration: None,
         quiet: false,
+        verbose: false,
         clear_between: false,
         clear_once: false,
         wait_between_images: None,
@@ -135,11 +176,22 @@ fn test_infinite_loops() {
         title_format: None,
         center: false,
         alternate_screen: false,
+        hide_cursor: false,
         background: showme::config::BackgroundColor::Auto,
         pattern_color: None,
         pattern_size: 1,
         auto_crop: false,
         crop_border: 0,
+        output_file: None,
+        use_8bit_color: false,
+        threads: None,
+        compress_level: 1,
+        force_video: false,
+        force_image: false,
+        scroll_animation: false,
+        scroll_delay: std::time::Duration::from_millis(60),
+        scroll_dx: 1,
+        scroll_dy: 0,
     };
 
     assert_eq!(config.loops, Some(-1));
@@ -151,8 +203,8 @@ fn test_sizing_combinations() {
     let sizing = RenderSizing {
         width_cells: Some(200),
         height_cells: Some(100),
-        fit_width: false,
         upscale: true,
+        ..RenderSizing::default()
     };
 
     assert!(sizing.upscale);
@@ -161,10 +213,8 @@ fn test_sizing_combinations() {
 
     // Test fit_width alone
     let sizing2 = RenderSizing {
-        width_cells: None,
-        height_cells: None,
         fit_width: true,
-        upscale: false,
+        ..RenderSizing::default()
     };
 
     assert!(sizing2.fit_width);

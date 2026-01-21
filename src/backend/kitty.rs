@@ -117,7 +117,7 @@ impl Backend for KittyBackend {
 
         let mut image = pixels.clone();
         blend_transparency(&mut image, options.background);
-        let png = encode_png(&image, "kitty")?;
+        let png = encode_png(&image, "kitty", options.compress_level)?;
 
         let lines = self.build_chunks(
             &png,
@@ -188,7 +188,7 @@ mod tests {
             )
             .expect("render succeeds");
 
-        assert_eq!(rendered.width_cells, 2);
+        assert_eq!(rendered.width_cells, 48);
         assert_eq!(rendered.height_cells, 0);
         assert_eq!(rendered.lines.len(), 1);
         assert!(rendered.lines[0].starts_with("\x1b_G"));

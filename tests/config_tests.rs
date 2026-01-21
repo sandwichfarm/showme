@@ -1,5 +1,5 @@
 use std::str::FromStr;
-use timg_rust::{BackendKind, PixelationMode, RotationMode};
+use showme::{BackendKind, PixelationMode, RotationMode};
 
 #[test]
 fn test_backend_kind_from_str() {

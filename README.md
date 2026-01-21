@@ -71,12 +71,12 @@ Pre-built binaries are available for multiple platforms with varying feature sup
   - Manual width/height constraints (`-w`, `-H`)
   - Fit-to-width mode (`-W/--fit-width`)
   - Fit-to-height mode (`--fit-height`)
-  - Upscaling support (`-U/--upscale`, `-U i` for integer scaling)
+  - Upscaling support (`-U/--upscale on`, `-U i` for integer scaling)
   - Width stretch correction (`--width-stretch`)
   - EXIF orientation support (automatic rotation for phone photos)
   - Auto-crop to remove uniform borders (`--auto-crop`)
   - Fixed border cropping (`--crop-border N`)
-  - Antialiasing control (`-a/--antialias`)
+  - Antialiasing control (`-a/--no-antialias`)
 - **Input sources:**
   - File paths (command line arguments)
   - Standard input (`-` for piping images)
@@ -302,10 +302,10 @@ showme --fit-width wide-panorama.jpg
 showme --fit-height tall-portrait.jpg
 
 # Upscale small images
-showme --upscale small-icon.png
+showme --upscale on small-icon.png
 
 # Integer upscaling (no antialiasing)
-showme -U i pixel-art.png
+showme -U i -a pixel-art.png
 
 # View phone photos with automatic rotation
 showme phone-photos/*.jpg

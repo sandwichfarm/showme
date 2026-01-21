@@ -97,6 +97,16 @@ pub fn load_image(
         }
     }
 
+    // Check for DDS format (uncompressed DDS variants are not handled by the `image` crate)
+    if path
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|s| s.eq_ignore_ascii_case("dds"))
+        .unwrap_or(false)
+    {
+        return load_dds(path, rotation_mode, auto_crop, crop_border);
+    }
+
     match reader.format() {
         Some(ImageFormat::Gif) => load_gif(path, rotation_mode, auto_crop, crop_border),
         Some(_) | None => load_static_image(reader.decode(), path, rotation_mode, auto_crop, crop_border),
@@ -231,6 +241,235 @@ fn load_gif(path: &Path, _rotation_mode: RotationMode, _auto_crop: bool, _crop_b
     })
 }
 
+fn load_dds(path: &Path, rotation_mode: RotationMode, auto_crop: bool, crop_border: u32) -> Result<ImageSequence> {
+    const DDS_MAGIC: &[u8; 4] = b"DDS ";
+    const DDS_HEADER_LEN: usize = 124;
+    const DDSD_PITCH: u32 = 0x0000_0008;
+
+    const DDPF_ALPHAPIXELS: u32 = 0x0000_0001;
+    const DDPF_FOURCC: u32 = 0x0000_0004;
+    const DDPF_RGB: u32 = 0x0000_0040;
+
+    fn u32_le(data: &[u8], offset: usize) -> Result<u32> {
+        let bytes: [u8; 4] = data
+            .get(offset..offset + 4)
+            .ok_or_else(|| RimgError::other("DDS: header too short"))?
+            .try_into()
+            .expect("slice length checked");
+        Ok(u32::from_le_bytes(bytes))
+    }
+
+    fn decode_with_image_dds(data: &[u8], path: &Path) -> Result<DynamicImage> {
+        let decoder = image::codecs::dds::DdsDecoder::new(Cursor::new(data)).map_err(|err| {
+            RimgError::ImageOpen {
+                path: path.to_path_buf(),
+                source: err,
+            }
+        })?;
+        DynamicImage::from_decoder(decoder).map_err(|err| RimgError::ImageOpen {
+            path: path.to_path_buf(),
+            source: err,
+        })
+    }
+
+    fn mask_to_scale(mask: u32) -> (u32, u32) {
+        if mask == 0 {
+            return (0, 0);
+        }
+        let shift = mask.trailing_zeros();
+        let width = (mask >> shift).count_ones();
+        (shift, width)
+    }
+
+    fn extract_channel(value: u32, mask: u32) -> u8 {
+        if mask == 0 {
+            return 0;
+        }
+        let (shift, width) = mask_to_scale(mask);
+        if width == 0 {
+            return 0;
+        }
+        let raw = (value & mask) >> shift;
+        if width == 8 {
+            raw as u8
+        } else {
+            let max = (1u64 << width) - 1;
+            let raw = raw as u64;
+            ((raw * 255) / max) as u8
+        }
+    }
+
+    fn decode_uncompressed(
+        data: &[u8],
+        data_offset: usize,
+        flags: u32,
+        width: u32,
+        height: u32,
+        pitch_or_linear_size: u32,
+        rgb_bits: u32,
+        r_mask: u32,
+        g_mask: u32,
+        b_mask: u32,
+        a_mask: u32,
+    ) -> Result<RgbaImage> {
+        if rgb_bits == 0 || rgb_bits > 32 {
+            return Err(RimgError::other(format!(
+                "DDS: unsupported RGB bit depth {rgb_bits}"
+            )));
+        }
+
+        let bytes_per_pixel = ((rgb_bits + 7) / 8) as usize;
+        if !(2..=4).contains(&bytes_per_pixel) {
+            return Err(RimgError::other(format!(
+                "DDS: unsupported bytes-per-pixel {bytes_per_pixel}"
+            )));
+        }
+
+        let pitch = if (flags & DDSD_PITCH) != 0 && pitch_or_linear_size != 0 {
+            pitch_or_linear_size as usize
+        } else {
+            width as usize * bytes_per_pixel
+        };
+
+        let required = data_offset
+            .saturating_add(pitch.saturating_mul(height as usize));
+        if data.len() < required {
+            return Err(RimgError::other("DDS: file truncated"));
+        }
+
+        let mut out = vec![0u8; (width as usize) * (height as usize) * 4];
+        for y in 0..height as usize {
+            let row = data_offset + y * pitch;
+            for x in 0..width as usize {
+                let idx = (y * width as usize + x) * 4;
+                let px = row + x * bytes_per_pixel;
+
+                let mut value = 0u32;
+                for i in 0..bytes_per_pixel {
+                    value |= (data[px + i] as u32) << (8 * i);
+                }
+
+                out[idx] = extract_channel(value, r_mask);
+                out[idx + 1] = extract_channel(value, g_mask);
+                out[idx + 2] = extract_channel(value, b_mask);
+                out[idx + 3] = if a_mask == 0 { 255 } else { extract_channel(value, a_mask) };
+            }
+        }
+
+        RgbaImage::from_raw(width, height, out)
+            .ok_or_else(|| RimgError::other("DDS: failed to build image buffer"))
+    }
+
+    let data = std::fs::read(path).map_err(|err| RimgError::ImageOpen {
+        path: path.to_path_buf(),
+        source: image::ImageError::IoError(err),
+    })?;
+
+    if data.len() < 4 + DDS_HEADER_LEN || &data[..4] != DDS_MAGIC {
+        return Err(RimgError::other(format!(
+            "failed to open {}: not a DDS file",
+            path.display()
+        )));
+    }
+
+    // Try the `image` crate's DDS decoder first (supports DXT variants).
+    // If it fails, fall back to uncompressed DDS decoding.
+    let decoded = decode_with_image_dds(&data, path).or_else(|image_err| {
+        // Parse legacy header for uncompressed RGB(A) formats.
+        let header_base = 4;
+        let header_flags = u32_le(&data, header_base + 4)?;
+        let height = u32_le(&data, header_base + 8)?;
+        let width = u32_le(&data, header_base + 12)?;
+        let pitch_or_linear_size = u32_le(&data, header_base + 16)?;
+
+        let pf_base = header_base + 72;
+        let pf_flags = u32_le(&data, pf_base + 4)?;
+        let mut fourcc = [0u8; 4];
+        fourcc.copy_from_slice(
+            data.get(pf_base + 8..pf_base + 12)
+                .ok_or_else(|| RimgError::other("DDS: header too short"))?,
+        );
+        let rgb_bits = u32_le(&data, pf_base + 12)?;
+        let mut r_mask = u32_le(&data, pf_base + 16)?;
+        let mut g_mask = u32_le(&data, pf_base + 20)?;
+        let mut b_mask = u32_le(&data, pf_base + 24)?;
+        let mut a_mask = u32_le(&data, pf_base + 28)?;
+
+        // DX10 header: handle the common uncompressed RGBA/BGRA formats.
+        let mut data_offset = 4 + DDS_HEADER_LEN;
+        if (pf_flags & DDPF_FOURCC) != 0 && &fourcc == b"DX10" {
+            let dx10_base = data_offset;
+            if data.len() < dx10_base + 20 {
+                return Err(RimgError::other("DDS: DX10 header truncated"));
+            }
+            let dxgi_format = u32_le(&data, dx10_base)?;
+            data_offset += 20;
+            match dxgi_format {
+                28 => {
+                    // DXGI_FORMAT_R8G8B8A8_UNORM
+                    r_mask = 0x0000_00ff;
+                    g_mask = 0x0000_ff00;
+                    b_mask = 0x00ff_0000;
+                    a_mask = 0xff00_0000;
+                }
+                87 => {
+                    // DXGI_FORMAT_B8G8R8A8_UNORM
+                    r_mask = 0x00ff_0000;
+                    g_mask = 0x0000_ff00;
+                    b_mask = 0x0000_00ff;
+                    a_mask = 0xff00_0000;
+                }
+                _ => return Err(image_err),
+            }
+        }
+
+        if (pf_flags & DDPF_RGB) == 0 {
+            return Err(image_err);
+        }
+        if (pf_flags & DDPF_ALPHAPIXELS) == 0 {
+            a_mask = 0;
+        }
+
+        let rgba = decode_uncompressed(
+            &data,
+            data_offset,
+            header_flags,
+            width,
+            height,
+            pitch_or_linear_size,
+            rgb_bits,
+            r_mask,
+            g_mask,
+            b_mask,
+            a_mask,
+        )?;
+
+        Ok(DynamicImage::ImageRgba8(rgba))
+    })?;
+
+    let mut image = decoded;
+
+    // Apply rotation if enabled (DDS typically doesn't have EXIF, but check anyway)
+    if rotation_mode == RotationMode::Exif {
+        if let Some(orientation) = read_exif_orientation(path) {
+            image = apply_orientation(image, orientation);
+        }
+    }
+
+    // Apply cropping: first fixed border, then auto-crop
+    if crop_border > 0 {
+        image = autocrop::crop_border(image, crop_border);
+    }
+    if auto_crop {
+        image = autocrop::auto_crop(image);
+    }
+
+    Ok(ImageSequence {
+        path: path.to_path_buf(),
+        frames: vec![Frame::single(image.to_rgba8())],
+    })
+}
+
 #[cfg(feature = "qoi")]
 fn load_qoi(path: &Path, rotation_mode: RotationMode, auto_crop: bool, crop_border: u32) -> Result<ImageSequence> {
     // Read entire file into memory (QOI decoder needs bytes)
@@ -324,11 +563,58 @@ fn apply_orientation(image: DynamicImage, orientation: u32) -> DynamicImage {
 fn load_pdf(path: &Path, rotation_mode: RotationMode, auto_crop: bool, crop_border: u32) -> Result<ImageSequence> {
     use pdfium_render::prelude::*;
 
+    fn bind_pdfium() -> std::result::Result<Box<dyn PdfiumLibraryBindings>, PdfiumError> {
+        let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+
+        if let Ok(path) = std::env::var("SHOWME_PDFIUM_PATH") {
+            if !path.trim().is_empty() {
+                candidates.push(std::path::PathBuf::from(path));
+            }
+        }
+
+        if let Ok(dir) = std::env::var("SHOWME_PDFIUM_DIR") {
+            let dir = dir.trim();
+            if !dir.is_empty() {
+                candidates.push(Pdfium::pdfium_platform_library_name_at_path(std::path::Path::new(
+                    dir,
+                )));
+            }
+        }
+
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(dir) = exe.parent() {
+                candidates.push(Pdfium::pdfium_platform_library_name_at_path(dir));
+                candidates.push(Pdfium::pdfium_platform_library_name_at_path(&dir.join("lib")));
+            }
+        }
+
+        // Backwards-compatible: current working directory.
+        candidates.push(Pdfium::pdfium_platform_library_name_at_path(std::path::Path::new(
+            ".",
+        )));
+
+        // Common install locations.
+        candidates.push(Pdfium::pdfium_platform_library_name_at_path(std::path::Path::new(
+            "/opt/homebrew/lib",
+        )));
+        candidates.push(Pdfium::pdfium_platform_library_name_at_path(std::path::Path::new(
+            "/usr/local/lib",
+        )));
+
+        // Try each explicit candidate path, then fall back to system search.
+        for candidate in candidates {
+            if let Ok(bindings) = Pdfium::bind_to_library(&candidate) {
+                return Ok(bindings);
+            }
+        }
+
+        Pdfium::bind_to_system_library()
+    }
+
     // Initialize Pdfium library
     let pdfium = Pdfium::new(
-        Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./"))
-            .or_else(|_| Pdfium::bind_to_system_library())
-            .map_err(|err| RimgError::other(format!("Failed to initialize PDF library: {}", err)))?
+        bind_pdfium()
+            .map_err(|err| RimgError::other(format!("Failed to initialize PDF library: {err}")))?,
     );
 
     // Load the PDF document

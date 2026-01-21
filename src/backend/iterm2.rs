@@ -96,7 +96,7 @@ impl Backend for ITerm2Backend {
 
         let mut image = pixels.clone();
         blend_transparency(&mut image, options.background);
-        let png = encode_png(&image, "iterm2")?;
+        let png = encode_png(&image, "iterm2", options.compress_level)?;
         let lines = self.build_chunks(&png, width_cells, height_cells);
 
         if options.verbose {
@@ -159,7 +159,7 @@ mod tests {
         assert_eq!(rendered.lines.len(), 1);
         assert!(rendered.lines[0].starts_with("\x1b]1337;File="));
         assert!(rendered.lines[0].ends_with('\x07'));
-        assert_eq!(rendered.width_cells, 1);
+        assert_eq!(rendered.width_cells, 48);
         assert_eq!(rendered.height_cells, 0);
     }
 }

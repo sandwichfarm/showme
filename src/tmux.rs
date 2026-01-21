@@ -29,7 +29,7 @@ pub fn in_tmux() -> bool {
 ///
 /// Example:
 /// ```
-/// use timg_rust::tmux::wrap_for_tmux;
+/// use showme::tmux::wrap_for_tmux;
 ///
 /// let seq = "\x1b_Ga=T;...\x1b\\";
 /// let wrapped = wrap_for_tmux(seq);

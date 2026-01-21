@@ -491,6 +491,8 @@ dependencies = [
 [[package]]
 name = "ffmpeg-next"
 version = "8.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d658424d233cbd993a972dd73a66ca733acd12a494c68995c9ac32ae1fe65b40"
 dependencies = [
  "bitflags 2.10.0",
  "ffmpeg-sys-next",
@@ -1223,7 +1225,7 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
 name = "showme"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -1235,6 +1237,7 @@ dependencies = [
  "figlet-rs",
  "image",
  "kamadak-exif",
+ "libc",
  "once_cell",
  "pdfium-render",
  "predicates",

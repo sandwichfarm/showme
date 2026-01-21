@@ -1,5 +1,5 @@
 use image::{Rgba, RgbaImage};
-use timg_rust::{PixelationMode, RenderSizing, RotationMode};
+use showme::{PixelationMode, RenderSizing, RotationMode};
 
 #[test]
 fn test_pixelation_mode_default() {
@@ -24,7 +24,9 @@ fn test_render_sizing_default() {
     assert_eq!(sizing.width_cells, None);
     assert_eq!(sizing.height_cells, None);
     assert_eq!(sizing.fit_width, false);
+    assert_eq!(sizing.fit_height, false);
     assert_eq!(sizing.upscale, false);
+    assert_eq!(sizing.upscale_integer, false);
 }
 
 #[test]
@@ -33,7 +35,7 @@ fn test_render_sizing_fit_width() {
         width_cells: Some(100),
         height_cells: None,
         fit_width: true,
-        upscale: false,
+        ..RenderSizing::default()
     };
     assert!(sizing.fit_width);
     assert_eq!(sizing.width_cells, Some(100));
@@ -44,8 +46,8 @@ fn test_render_sizing_upscale() {
     let sizing = RenderSizing {
         width_cells: Some(200),
         height_cells: Some(100),
-        fit_width: false,
         upscale: true,
+        ..RenderSizing::default()
     };
     assert!(sizing.upscale);
 }

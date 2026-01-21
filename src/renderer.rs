@@ -330,8 +330,14 @@ impl Renderer {
             return Ok(());
         }
 
+        let rendered_cells: Vec<Vec<String>> = rendered
+            .lines
+            .iter()
+            .map(|line| split_rendered_line_into_cells(line))
+            .collect();
+
         let image_width = rendered.width_cells as i32;
-        let image_height = rendered.lines.len() as i32;
+        let image_height = rendered_cells.len() as i32;
         let viewport_width = self.terminal.columns as i32;
         let viewport_height = self.terminal.rows as i32;
 
@@ -397,20 +403,19 @@ impl Renderer {
                 }
 
                 // Extract viewport from rendered image
-                let viewport_lines: Vec<&str> = rendered
-                    .lines
-                    .iter()
-                    .skip(*scroll_y as usize)
-                    .take(viewport_height as usize)
-                    .map(|line| {
-                        let start = (*scroll_x as usize).min(line.len());
-                        let end = (start + viewport_width as usize).min(line.len());
-                        &line[start..end]
-                    })
-                    .collect();
+                let start_x = (*scroll_x).max(0) as usize;
+                let end_x = start_x.saturating_add(viewport_width.max(0) as usize);
+                let start_y = (*scroll_y).max(0) as usize;
+                let end_y = start_y.saturating_add(viewport_height.max(0) as usize);
 
-                // Write viewport
-                for line in viewport_lines {
+                for row in rendered_cells.iter().skip(start_y).take(end_y.saturating_sub(start_y)) {
+                    let mut line = String::from("\x1b[0m");
+                    let start = start_x.min(row.len());
+                    let end = end_x.min(row.len());
+                    for cell in &row[start..end] {
+                        line.push_str(cell);
+                    }
+                    line.push_str("\x1b[0m");
                     stdout.write_all(line.as_bytes())?;
                     stdout.write_all(b"\n")?;
                 }
@@ -622,6 +627,48 @@ impl Renderer {
 
         Some(out)
     }
+}
+
+fn split_rendered_line_into_cells(line: &str) -> Vec<String> {
+    let mut cells = Vec::new();
+    let mut esc = String::new();
+
+    let bytes = line.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'\x1b' {
+            let start = i;
+            if i + 1 < bytes.len() && bytes[i + 1] == b'[' {
+                i += 2;
+                while i < bytes.len() {
+                    let b = bytes[i];
+                    i += 1;
+                    if (0x40..=0x7e).contains(&b) {
+                        break;
+                    }
+                }
+                esc.push_str(&line[start..i]);
+                continue;
+            }
+
+            esc.push('\x1b');
+            i += 1;
+            continue;
+        }
+
+        let ch = line[i..].chars().next().unwrap();
+        i += ch.len_utf8();
+
+        let mut cell = String::new();
+        if !esc.is_empty() {
+            cell.push_str(&esc);
+        }
+        cell.push(ch);
+        cells.push(cell);
+        esc.clear();
+    }
+
+    cells
 }
 
 fn background_style(config: &Config) -> BackgroundStyle {

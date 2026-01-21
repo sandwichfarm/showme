@@ -70,9 +70,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Legacy C++ codebase
 - CMake build system
 
+## [0.1.1] - Unreleased
+
+### Added
+- DDS image decoding support
+- `--fit-height` support for Unicode rendering
+- `--compress` support for PNG-based terminals (Kitty/iTerm2)
+
+### Fixed
+- Integer scaling mode (`-U i`) for Unicode rendering
+- Unicode antialias toggle (`-a/--no-antialias`)
+- Improved PDFium discovery on macOS (supports env vars / next-to-binary)
+
 ## [0.1.0] - Unreleased
 
 Initial development version.
 
-[Unreleased]: https://github.com/sandwichfarm/showme/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/sandwichfarm/showme/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/sandwichfarm/showme/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/sandwichfarm/showme/releases/tag/v0.1.0

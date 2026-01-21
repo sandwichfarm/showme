@@ -1,5 +1,5 @@
 use image::{DynamicImage, Rgba, RgbaImage};
-use timg_rust::RotationMode;
+use showme::RotationMode;
 
 #[test]
 fn test_rotation_mode_default() {

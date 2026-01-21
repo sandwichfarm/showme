@@ -65,7 +65,8 @@ fn encode_sixel(image: image::RgbaImage) -> Result<String> {
         )?;
         let output_guard = OutputGuard { ptr: output };
 
-        sys::sixel_output_set_8bit_availability(output_guard.ptr, sys::CharacterSize::EightBit);
+        // Use 7-bit control sequences (ESC ...) so the output is valid UTF-8.
+        sys::sixel_output_set_8bit_availability(output_guard.ptr, sys::CharacterSize::SevenBit);
         sys::sixel_output_set_encode_policy(output_guard.ptr, sys::EncodePolicy::Fast);
 
         let mut dither: *mut sys::Dither = ptr::null_mut();
@@ -185,6 +186,8 @@ mod tests {
                     terminal: TerminalSize {
                         columns: 80,
                         rows: 24,
+                        width_pixels: None,
+                        height_pixels: None,
                     },
                     background: crate::backend::BackgroundStyle {
                         color: None,
@@ -194,6 +197,7 @@ mod tests {
                     pixelation: crate::config::PixelationMode::Quarter,
                     use_8bit_color: false,
                     compress_level: 1,
+                    verbose: false,
                 },
             )
             .expect("render sixel");

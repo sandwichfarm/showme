@@ -73,11 +73,17 @@ fn query_terminal_pixel_size() -> Option<(u16, u16)> {
     if !atty::is(Stream::Stdout) {
         return None;
     }
+    // If stdin is not a TTY (e.g. `cat image.png | showme -`), reading from stdin for terminal
+    // replies will consume the piped image bytes and break stdin decoding.
+    if !atty::is(Stream::Stdin) {
+        return None;
+    }
 
     // Try to query character cell size in pixels: CSI 16 t
     // Response format: CSI 6 ; height ; width t
     let mut stdout = io::stdout();
-    let mut stdin = io::stdin();
+    let stdin = io::stdin();
+    let mut stdin = stdin.lock();
 
     // Save current terminal mode
     let Ok(_original_mode) = crossterm::terminal::enable_raw_mode() else {
@@ -89,24 +95,54 @@ fn query_terminal_pixel_size() -> Option<(u16, u16)> {
         write!(stdout, "\x1b[16t").ok()?;
         stdout.flush().ok()?;
 
-        // Read response with timeout
+        // Read response with timeout.
+        //
+        // Note: `stdin.read()` is blocking, so we must poll for readability first.
         let mut response = Vec::new();
         let mut buf = [0u8; 1];
         let start = std::time::Instant::now();
 
-        while start.elapsed() < Duration::from_millis(100) {
-            if stdin.read(&mut buf).ok()? == 1 {
-                response.push(buf[0]);
+        const MAX_RESPONSE_LEN: usize = 50;
+        let timeout = Duration::from_millis(100);
 
-                // Check if we have a complete response
-                if buf[0] == b't' && response.len() > 5 {
+        while start.elapsed() < timeout && response.len() < MAX_RESPONSE_LEN {
+            // Wait up to the remaining time for stdin to become readable.
+            #[cfg(unix)]
+            {
+                use std::os::unix::io::AsRawFd as _;
+                let remaining = timeout.saturating_sub(start.elapsed());
+                let timeout_ms: i32 = remaining.as_millis().min(i32::MAX as u128) as i32;
+                let mut fds = libc::pollfd {
+                    fd: stdin.as_raw_fd(),
+                    events: libc::POLLIN,
+                    revents: 0,
+                };
+
+                let ready = unsafe { libc::poll(&mut fds as *mut _, 1, timeout_ms) };
+                if ready <= 0 {
                     break;
                 }
-
-                // Prevent infinite loop on malformed response
-                if response.len() > 50 {
-                    return None;
+                if (fds.revents & libc::POLLIN) == 0 {
+                    break;
                 }
+            }
+
+            #[cfg(not(unix))]
+            {
+                // Best-effort: without a portable way to poll stdin for readability,
+                // avoid blocking reads and just give up.
+                break;
+            }
+
+            if stdin.read(&mut buf).ok()? != 1 {
+                break;
+            }
+
+            response.push(buf[0]);
+
+            // Check if we have a complete response
+            if buf[0] == b't' && response.len() > 5 {
+                break;
             }
         }
 

@@ -1,6 +1,8 @@
 use image::ImageEncoder;
-use image::codecs::png::PngEncoder;
-use image::imageops::{FilterType, resize};
+use image::codecs::png::{
+    CompressionType as PngCompressionType, FilterType as PngFilterType, PngEncoder,
+};
+use image::imageops::{FilterType as ImageFilterType, resize};
 
 use super::BackgroundStyle;
 use crate::backend::RenderOptions;
@@ -100,9 +102,9 @@ pub(crate) fn scale_frame(frame: &Frame, options: RenderOptions) -> (image::Rgba
     } else {
         // Choose filter based on antialias setting
         let filter = if options.sizing.antialias {
-            FilterType::Lanczos3 // High quality antialiasing
+            ImageFilterType::Lanczos3 // High quality antialiasing
         } else {
-            FilterType::Nearest // Fast, no antialiasing
+            ImageFilterType::Nearest // Fast, no antialiasing
         };
         resize(pixels, target_width, target_height, filter)
     };
@@ -110,9 +112,16 @@ pub(crate) fn scale_frame(frame: &Frame, options: RenderOptions) -> (image::Rgba
     (scaled, width_cells, height_cells)
 }
 
-pub(crate) fn encode_png(image: &image::RgbaImage, backend_name: &str) -> Result<Vec<u8>> {
+pub(crate) fn encode_png(image: &image::RgbaImage, backend_name: &str, compress_level: u8) -> Result<Vec<u8>> {
+    let (compression, filter) = match compress_level {
+        0 => (PngCompressionType::Fast, PngFilterType::NoFilter),
+        1..=3 => (PngCompressionType::Fast, PngFilterType::Sub),
+        4..=6 => (PngCompressionType::Default, PngFilterType::Adaptive),
+        _ => (PngCompressionType::Best, PngFilterType::Adaptive),
+    };
+
     let mut encoded = Vec::new();
-    PngEncoder::new(&mut encoded)
+    PngEncoder::new_with_quality(&mut encoded, compression, filter)
         .write_image(
             image.as_raw(),
             image.width(),

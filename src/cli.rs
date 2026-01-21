@@ -75,7 +75,14 @@ pub struct Cli {
     fit_height: bool,
 
     /// Allow upscaling images smaller than terminal size. Optional 'i' for integer scaling
-    #[arg(short = 'U', long = "upscale", value_name = "MODE")]
+    #[arg(
+        short = 'U',
+        long = "upscale",
+        value_name = "MODE",
+        num_args = 0..=1,
+        default_missing_value = "on",
+        value_parser = ["on", "i"],
+    )]
     upscale: Option<String>,
 
     /// Width stretch factor for aspect ratio correction (auto-detected if not specified)
@@ -661,6 +668,24 @@ fn read_filelist(filelist_path: &Path, relative_to_filelist: bool) -> Result<Vec
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_upscale_without_mode_does_not_consume_input_path() {
+        let cli = Cli::try_parse_from(["showme", "--upscale", "on", "small-icon.png"]).expect("parse");
+        let config = cli.into_config().expect("config");
+        assert!(config.sizing.upscale);
+        assert!(!config.sizing.upscale_integer);
+        assert_eq!(config.inputs, vec![PathBuf::from("small-icon.png")]);
+    }
+
+    #[test]
+    fn parses_upscale_integer_mode() {
+        let cli = Cli::try_parse_from(["showme", "--upscale", "i", "pixel-art.png"]).expect("parse");
+        let config = cli.into_config().expect("config");
+        assert!(config.sizing.upscale);
+        assert!(config.sizing.upscale_integer);
+        assert_eq!(config.inputs, vec![PathBuf::from("pixel-art.png")]);
+    }
 
     #[test]
     fn parses_grid_with_rows() {
