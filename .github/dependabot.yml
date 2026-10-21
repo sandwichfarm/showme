@@ -6,6 +6,12 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    ignore:
+      # Match the deliberate Cargo.toml pin: 1.0.0 adds vulnerable ZIP 0.6.6
+      # (RUSTSEC-2026-0367/0368/0369) and changes the FIGfont API.
+      # Reassess later releases through the normal update/audit checks.
+      - dependency-name: figlet-rs
+        versions: ["1.0.0"]
     groups:
       compatible:
         update-types: [minor, patch]
