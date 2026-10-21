@@ -1,5 +1,5 @@
 use super::chunk_util::Base64Chunks;
-use super::image_util::{blend_transparency, encode_png, scale_frame};
+use super::image_util::{blend_transparency, encode_png};
 use crate::backend::{Backend, RenderOptions, RenderedFrame};
 use crate::config::BackendKind;
 use crate::error::Result;
@@ -39,9 +39,9 @@ impl KittyBackend {
 
             let mut params = Vec::new();
             if idx == 0 {
-                params.push(format!("a=T"));
-                params.push(format!("f=100"));
-                params.push(format!("q=2")); // Suppress terminal feedback
+                params.push("a=T".to_string());
+                params.push("f=100".to_string());
+                params.push("q=2".to_string()); // Suppress terminal feedback
                 params.push(format!("i={}", image_id)); // Unique image ID
                 params.push(format!("s={}", pixel_width));
                 params.push(format!("v={}", pixel_height));

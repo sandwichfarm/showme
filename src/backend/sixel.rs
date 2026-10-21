@@ -26,8 +26,7 @@ impl Backend for SixelBackend {
         blend_transparency(&mut image, options.background);
 
         let sixel_data = encode_sixel(image)?;
-        let mut lines = Vec::with_capacity(1);
-        lines.push(sixel_data);
+        let lines = vec![sixel_data];
 
         Ok(RenderedFrame {
             lines,
@@ -47,7 +46,7 @@ fn encode_sixel(image: image::RgbaImage) -> Result<String> {
     let mut padded_height = height;
     if remainder != 0 {
         let add_rows = 6 - remainder;
-        data.extend(std::iter::repeat(0).take(add_rows * width * 4));
+        data.extend(std::iter::repeat_n(0, add_rows * width * 4));
         padded_height += add_rows;
     }
 

@@ -32,10 +32,10 @@ fn test_render_sizing_default() {
     let sizing = RenderSizing::default();
     assert_eq!(sizing.width_cells, None);
     assert_eq!(sizing.height_cells, None);
-    assert_eq!(sizing.fit_width, false);
-    assert_eq!(sizing.fit_height, false);
-    assert_eq!(sizing.upscale, false);
-    assert_eq!(sizing.upscale_integer, false);
+    assert!(!sizing.fit_width);
+    assert!(!sizing.fit_height);
+    assert!(!sizing.upscale);
+    assert!(!sizing.upscale_integer);
 }
 
 #[test]

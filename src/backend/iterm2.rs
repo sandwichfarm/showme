@@ -1,5 +1,5 @@
 use super::chunk_util::Base64Chunks;
-use super::image_util::{blend_transparency, encode_png, scale_frame};
+use super::image_util::{blend_transparency, encode_png};
 use crate::backend::{Backend, RenderOptions, RenderedFrame};
 use crate::config::BackendKind;
 use crate::error::Result;

@@ -9,6 +9,7 @@ mod iterm2;
 #[cfg(feature = "sixel")]
 mod sixel;
 
+#[cfg(any(feature = "kitty", feature = "iterm2"))]
 mod chunk_util;
 mod image_util;
 
@@ -73,11 +74,11 @@ pub struct BackendFactory;
 impl BackendFactory {
     pub fn build(kind: BackendKind) -> Result<Box<dyn Backend + Send + Sync>> {
         match kind {
-            BackendKind::Unicode | BackendKind::Auto => Ok(Box::new(UnicodeBackend::default())),
+            BackendKind::Unicode | BackendKind::Auto => Ok(Box::new(UnicodeBackend)),
             BackendKind::Kitty => {
                 #[cfg(feature = "kitty")]
                 {
-                    Ok(Box::new(KittyBackend::default()))
+                    Ok(Box::new(KittyBackend))
                 }
                 #[cfg(not(feature = "kitty"))]
                 {
@@ -89,7 +90,7 @@ impl BackendFactory {
             BackendKind::Iterm2 => {
                 #[cfg(feature = "iterm2")]
                 {
-                    Ok(Box::new(ITerm2Backend::default()))
+                    Ok(Box::new(ITerm2Backend))
                 }
                 #[cfg(not(feature = "iterm2"))]
                 {
@@ -101,7 +102,7 @@ impl BackendFactory {
             BackendKind::Sixel => {
                 #[cfg(feature = "sixel")]
                 {
-                    Ok(Box::new(SixelBackend::default()))
+                    Ok(Box::new(SixelBackend))
                 }
                 #[cfg(not(feature = "sixel"))]
                 {
@@ -116,7 +117,7 @@ impl BackendFactory {
     pub fn auto_from_guess(guess: config::BackendKind) -> Box<dyn Backend + Send + Sync> {
         match Self::build(guess) {
             Ok(backend) => backend,
-            Err(_) => Box::new(UnicodeBackend::default()),
+            Err(_) => Box::new(UnicodeBackend),
         }
     }
 }

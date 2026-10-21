@@ -11,22 +11,18 @@ pub enum BackendKind {
     Sixel,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PixelationMode {
     Half,
+    #[default]
     Quarter,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RotationMode {
     Off,
+    #[default]
     Exif,
-}
-
-impl Default for RotationMode {
-    fn default() -> Self {
-        Self::Exif
-    }
 }
 
 impl FromStr for RotationMode {
@@ -41,12 +37,6 @@ impl FromStr for RotationMode {
                 other
             )),
         }
-    }
-}
-
-impl Default for PixelationMode {
-    fn default() -> Self {
-        Self::Quarter
     }
 }
 
@@ -147,7 +137,7 @@ pub struct GridOptions {
 impl GridOptions {
     pub fn rows_for_total(&self, total: usize) -> usize {
         let cols = self.columns.get();
-        let rows_needed = (total + cols - 1) / cols;
+        let rows_needed = total.div_ceil(cols);
         if let Some(limit) = self.rows {
             rows_needed.min(limit.get())
         } else {

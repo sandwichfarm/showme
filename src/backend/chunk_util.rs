@@ -15,7 +15,7 @@ impl Base64Chunks {
         let chunk_count = if encoded.is_empty() {
             1
         } else {
-            (encoded.len() + chunk_size - 1) / chunk_size
+            encoded.len().div_ceil(chunk_size)
         };
         Self {
             encoded,
@@ -99,7 +99,7 @@ pub(crate) fn average_chunk_len(chunks: &Base64Chunks) -> usize {
     if len == 0 {
         0
     } else {
-        (len + chunks.len() - 1) / chunks.len()
+        len.div_ceil(chunks.len())
     }
 }
 

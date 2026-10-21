@@ -129,7 +129,7 @@ impl UnicodeBackend {
             target_height = 1;
         }
 
-        if target_height % 2 != 0 {
+        if !target_height.is_multiple_of(2) {
             target_height += 1;
         }
 
@@ -145,7 +145,7 @@ impl UnicodeBackend {
                 resize(&frame.pixels, target_width, target_height, filter)
             };
 
-        let mut lines = Vec::with_capacity((target_height as usize + 1) / 2);
+        let mut lines = Vec::with_capacity((target_height as usize).div_ceil(2));
         let mut y = 0;
         while y < scaled.height() {
             let mut line = String::with_capacity((target_width as usize) * 24);
@@ -266,7 +266,7 @@ impl UnicodeBackend {
         if target_width % 2 != 0 {
             target_width += 1;
         }
-        if target_height % 2 != 0 {
+        if !target_height.is_multiple_of(2) {
             target_height += 1;
         }
 
@@ -282,7 +282,7 @@ impl UnicodeBackend {
                 resize(&frame.pixels, target_width, target_height, filter)
             };
 
-        let mut lines = Vec::with_capacity((target_height as usize + 1) / 2);
+        let mut lines = Vec::with_capacity((target_height as usize).div_ceil(2));
         let mut y = 0;
         while y < scaled.height() {
             let mut line = String::with_capacity((target_width as usize / 2) * 24);
@@ -399,6 +399,8 @@ fn reset_bg(buf: &mut String) {
 }
 
 // Quarter block rendering: chooses the best glyph and colors for 2x2 pixel block
+// Four corner pixels and output styling are kept explicit at this pixel-emission boundary.
+#[allow(clippy::too_many_arguments)]
 fn append_quarter_block(
     line: &mut String,
     tl: Rgba<u8>,
