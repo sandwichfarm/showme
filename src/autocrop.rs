@@ -2,7 +2,6 @@
 ///
 /// This module implements automatic border detection and cropping,
 /// useful for screenshots, scanned documents, and images with padding.
-
 use image::{DynamicImage, GenericImageView, Rgba};
 
 /// Threshold for color similarity (0-255 per channel)

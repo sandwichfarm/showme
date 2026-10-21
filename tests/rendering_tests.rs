@@ -1,5 +1,5 @@
 use image::{Rgba, RgbaImage};
-use timg_rust::{PixelationMode, RenderSizing, RotationMode};
+use showme::{PixelationMode, RenderSizing, RotationMode};
 
 #[test]
 fn test_pixelation_mode_default() {
@@ -11,9 +11,18 @@ fn test_pixelation_mode_default() {
 fn test_pixelation_mode_from_str() {
     use std::str::FromStr;
 
-    assert_eq!(PixelationMode::from_str("quarter").unwrap(), PixelationMode::Quarter);
-    assert_eq!(PixelationMode::from_str("half").unwrap(), PixelationMode::Half);
-    assert_eq!(PixelationMode::from_str("q").unwrap(), PixelationMode::Quarter);
+    assert_eq!(
+        PixelationMode::from_str("quarter").unwrap(),
+        PixelationMode::Quarter
+    );
+    assert_eq!(
+        PixelationMode::from_str("half").unwrap(),
+        PixelationMode::Half
+    );
+    assert_eq!(
+        PixelationMode::from_str("q").unwrap(),
+        PixelationMode::Quarter
+    );
     assert_eq!(PixelationMode::from_str("h").unwrap(), PixelationMode::Half);
     assert!(PixelationMode::from_str("invalid").is_err());
 }
@@ -23,8 +32,10 @@ fn test_render_sizing_default() {
     let sizing = RenderSizing::default();
     assert_eq!(sizing.width_cells, None);
     assert_eq!(sizing.height_cells, None);
-    assert_eq!(sizing.fit_width, false);
-    assert_eq!(sizing.upscale, false);
+    assert!(!sizing.fit_width);
+    assert!(!sizing.fit_height);
+    assert!(!sizing.upscale);
+    assert!(!sizing.upscale_integer);
 }
 
 #[test]
@@ -33,7 +44,7 @@ fn test_render_sizing_fit_width() {
         width_cells: Some(100),
         height_cells: None,
         fit_width: true,
-        upscale: false,
+        ..RenderSizing::default()
     };
     assert!(sizing.fit_width);
     assert_eq!(sizing.width_cells, Some(100));
@@ -44,8 +55,8 @@ fn test_render_sizing_upscale() {
     let sizing = RenderSizing {
         width_cells: Some(200),
         height_cells: Some(100),
-        fit_width: false,
         upscale: true,
+        ..RenderSizing::default()
     };
     assert!(sizing.upscale);
 }

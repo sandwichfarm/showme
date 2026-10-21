@@ -58,8 +58,12 @@ pub fn color_256_to_rgb(index: u8) -> RgbColor {
     match index {
         // Grayscale ramp (232-255)
         232..=255 => {
-            let level = ((index - 232) * 10 + 4) as u8;
-            RgbColor { r: level, g: level, b: level }
+            let level = (index - 232) * 10 + 4;
+            RgbColor {
+                r: level,
+                g: level,
+                b: level,
+            }
         }
         // RGB cube (16-231)
         16..=231 => {
@@ -74,7 +78,11 @@ pub fn color_256_to_rgb(index: u8) -> RgbColor {
             }
         }
         // System colors - approximate
-        _ => RgbColor { r: 128, g: 128, b: 128 },
+        _ => RgbColor {
+            r: 128,
+            g: 128,
+            b: 128,
+        },
     }
 }
 
@@ -119,9 +127,9 @@ mod tests {
         let gray_light = rgb_to_256(200, 200, 200);
 
         // All should be in grayscale ramp (232-255)
-        assert!(gray_dark >= 232 && gray_dark <= 255);
-        assert!(gray_mid >= 232 && gray_mid <= 255);
-        assert!(gray_light >= 232 && gray_light <= 255);
+        assert!(gray_dark >= 232);
+        assert!(gray_mid >= 232);
+        assert!(gray_light >= 232);
         assert!(gray_dark < gray_mid);
         assert!(gray_mid < gray_light);
     }

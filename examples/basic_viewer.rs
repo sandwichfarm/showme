@@ -1,13 +1,12 @@
+use showme::config::{BackgroundColor, PixelationMode, RotationMode};
+use showme::{BackendKind, Config, RenderSizing, Renderer};
 /// Basic image viewer example
 ///
 /// This example shows how to use showme to display a single image
 /// using the default configuration.
 ///
 /// Usage: cargo run --example basic_viewer path/to/image.jpg
-
 use std::path::PathBuf;
-use showme::{Config, Renderer, BackendKind, RenderSizing};
-use showme::config::{PixelationMode, RotationMode, BackgroundColor};
 
 fn main() -> showme::Result<()> {
     // Get image path from command line arguments
@@ -24,10 +23,10 @@ fn main() -> showme::Result<()> {
     // Create a basic configuration
     let config = Config {
         inputs: vec![image_path],
-        backend: BackendKind::Auto,  // Automatically detect best backend
-        sizing: RenderSizing::unconstrained(),  // Use terminal size
-        pixelation: PixelationMode::Quarter,  // Quarter-block for best detail
-        rotation: RotationMode::Exif,  // Respect EXIF orientation
+        backend: BackendKind::Auto, // Automatically detect best backend
+        sizing: RenderSizing::unconstrained(), // Use terminal size
+        pixelation: PixelationMode::Quarter, // Quarter-block for best detail
+        rotation: RotationMode::Exif, // Respect EXIF orientation
         background: BackgroundColor::Auto,
         quiet: false,
         verbose: false,

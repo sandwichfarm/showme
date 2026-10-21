@@ -11,22 +11,18 @@ pub enum BackendKind {
     Sixel,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PixelationMode {
     Half,
+    #[default]
     Quarter,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RotationMode {
     Off,
+    #[default]
     Exif,
-}
-
-impl Default for RotationMode {
-    fn default() -> Self {
-        Self::Exif
-    }
 }
 
 impl FromStr for RotationMode {
@@ -41,12 +37,6 @@ impl FromStr for RotationMode {
                 other
             )),
         }
-    }
-}
-
-impl Default for PixelationMode {
-    fn default() -> Self {
-        Self::Quarter
     }
 }
 
@@ -147,7 +137,7 @@ pub struct GridOptions {
 impl GridOptions {
     pub fn rows_for_total(&self, total: usize) -> usize {
         let cols = self.columns.get();
-        let rows_needed = (total + cols - 1) / cols;
+        let rows_needed = total.div_ceil(cols);
         if let Some(limit) = self.rows {
             rows_needed.min(limit.get())
         } else {
@@ -194,6 +184,51 @@ pub struct Config {
     pub scroll_delay: std::time::Duration,
     pub scroll_dx: i32,
     pub scroll_dy: i32,
+}
+
+impl Default for Config {
+    /// Library defaults are deterministic and do not probe a terminal.
+    /// Set at least one input before building a renderer.
+    fn default() -> Self {
+        Self {
+            inputs: Vec::new(),
+            backend: BackendKind::Auto,
+            pixelation: PixelationMode::default(),
+            rotation: RotationMode::default(),
+            sizing: RenderSizing::default(),
+            grid: None,
+            loop_forever: false,
+            loops: None,
+            max_frames: None,
+            frame_offset: 0,
+            max_duration: None,
+            quiet: false,
+            verbose: false,
+            clear_between: false,
+            clear_once: false,
+            wait_between_images: None,
+            wait_between_rows: None,
+            title_format: None,
+            center: false,
+            alternate_screen: false,
+            hide_cursor: true,
+            background: BackgroundColor::Auto,
+            pattern_color: None,
+            pattern_size: 1,
+            auto_crop: false,
+            crop_border: 0,
+            output_file: None,
+            use_8bit_color: false,
+            threads: None,
+            compress_level: 1,
+            force_video: false,
+            force_image: false,
+            scroll_animation: false,
+            scroll_delay: std::time::Duration::from_millis(60),
+            scroll_dx: 1,
+            scroll_dy: 0,
+        }
+    }
 }
 
 impl Config {

@@ -12,17 +12,17 @@ pub struct UnicodeBackend;
 #[derive(Debug, Clone, Copy)]
 enum QuarterBlock {
     Empty,
-    TopLeft,     // ▘
-    TopRight,    // ▝
-    BotLeft,     // ▖
-    BotRight,    // ▗
-    Top,         // ▀
-    Bottom,      // ▄
-    Left,        // ▌
-    Right,       // ▐
+    TopLeft,         // ▘
+    TopRight,        // ▝
+    BotLeft,         // ▖
+    BotRight,        // ▗
+    Top,             // ▀
+    Bottom,          // ▄
+    Left,            // ▌
+    Right,           // ▐
     TopLeftBotRight, // ▚
     TopRightBotLeft, // ▞
-    Full,        // █
+    Full,            // █
 }
 
 impl QuarterBlock {
@@ -90,20 +90,36 @@ impl UnicodeBackend {
             scale_height = scale_height.min(1.0);
         }
 
-        // Apply fit-width logic
+        // Choose scale based on fit mode.
+        // - fit_width: allow height overflow
+        // - fit_height: allow width overflow
+        // - default: fit both dimensions
         let scale = if sizing.fit_width {
             scale_width
+        } else if sizing.fit_height {
+            scale_height
         } else {
             scale_width.min(scale_height)
+        };
+
+        // Apply integer upscaling constraint
+        let scale = if sizing.upscale_integer && scale > 1.0 {
+            scale.floor().max(1.0)
+        } else {
+            scale
         };
 
         // Scale image, then apply width_stretch to width
         let base_width = (frame.pixels.width() as f32 * scale).round() as u32;
         let base_height = (frame.pixels.height() as f32 * scale).round() as u32;
 
-        // Apply width_stretch but cap at max to prevent overflow
+        // Apply width_stretch; only cap to max width when not fitting-to-height.
         let stretched_width = (base_width as f32 * sizing.width_stretch).round() as u32;
-        let mut target_width = stretched_width.min(max_width_cells);
+        let mut target_width = if sizing.fit_height {
+            stretched_width
+        } else {
+            stretched_width.min(max_width_cells)
+        };
         let mut target_height = base_height;
 
         if target_width == 0 {
@@ -113,7 +129,7 @@ impl UnicodeBackend {
             target_height = 1;
         }
 
-        if target_height % 2 != 0 {
+        if !target_height.is_multiple_of(2) {
             target_height += 1;
         }
 
@@ -121,15 +137,15 @@ impl UnicodeBackend {
             if target_width == frame.pixels.width() && target_height == frame.pixels.height() {
                 frame.pixels.clone()
             } else {
-                resize(
-                    &frame.pixels,
-                    target_width,
-                    target_height,
-                    FilterType::Triangle,
-                )
+                let filter = if sizing.antialias {
+                    FilterType::Lanczos3
+                } else {
+                    FilterType::Nearest
+                };
+                resize(&frame.pixels, target_width, target_height, filter)
             };
 
-        let mut lines = Vec::with_capacity((target_height as usize + 1) / 2);
+        let mut lines = Vec::with_capacity((target_height as usize).div_ceil(2));
         let mut y = 0;
         while y < scaled.height() {
             let mut line = String::with_capacity((target_width as usize) * 24);
@@ -142,7 +158,15 @@ impl UnicodeBackend {
                     Rgba([0, 0, 0, 0])
                 };
 
-                append_half_block(&mut line, top, bottom, x, y, options.background, options.use_8bit_color);
+                append_half_block(
+                    &mut line,
+                    top,
+                    bottom,
+                    x,
+                    y,
+                    options.background,
+                    options.use_8bit_color,
+                );
                 x += 1;
             }
             line.push_str("\x1b[0m");
@@ -158,7 +182,11 @@ impl UnicodeBackend {
         })
     }
 
-    fn render_quarter_blocks(&self, frame: &Frame, options: RenderOptions) -> Result<RenderedFrame> {
+    fn render_quarter_blocks(
+        &self,
+        frame: &Frame,
+        options: RenderOptions,
+    ) -> Result<RenderedFrame> {
         let sizing = options.sizing;
         let terminal = options.terminal;
 
@@ -188,25 +216,43 @@ impl UnicodeBackend {
             scale_height = scale_height.min(1.0);
         }
 
-        // Apply fit-width logic
+        // Choose scale based on fit mode.
+        // - fit_width: allow height overflow
+        // - fit_height: allow width overflow
+        // - default: fit both dimensions
         let scale = if sizing.fit_width {
             scale_width
+        } else if sizing.fit_height {
+            scale_height
         } else {
             scale_width.min(scale_height)
+        };
+
+        // Apply integer upscaling constraint
+        let scale = if sizing.upscale_integer && scale > 1.0 {
+            scale.floor().max(1.0)
+        } else {
+            scale
         };
 
         // Scale image, then apply width_stretch to width
         let base_width = (frame.pixels.width() as f32 * scale).round() as u32;
         let base_height = (frame.pixels.height() as f32 * scale).round() as u32;
 
-        // Apply width_stretch but cap at max to prevent overflow
+        // Apply width_stretch; only cap to max width when not fitting-to-height.
         let stretched_width = (base_width as f32 * sizing.width_stretch).round() as u32;
-        let mut target_width = stretched_width.min(max_width_cells * 2);
+        let mut target_width = if sizing.fit_height {
+            stretched_width
+        } else {
+            stretched_width.min(max_width_cells * 2)
+        };
         let mut target_height = base_height;
 
         if options.verbose {
-            eprintln!("  [Unicode] Aspect ratio correction: {}x{} -> {}x{} (stretch={:.1}x)",
-                     base_width, base_height, target_width, target_height, sizing.width_stretch);
+            eprintln!(
+                "  [Unicode] Aspect ratio correction: {}x{} -> {}x{} (stretch={:.1}x)",
+                base_width, base_height, target_width, target_height, sizing.width_stretch
+            );
         }
 
         if target_width == 0 {
@@ -220,7 +266,7 @@ impl UnicodeBackend {
         if target_width % 2 != 0 {
             target_width += 1;
         }
-        if target_height % 2 != 0 {
+        if !target_height.is_multiple_of(2) {
             target_height += 1;
         }
 
@@ -228,15 +274,15 @@ impl UnicodeBackend {
             if target_width == frame.pixels.width() && target_height == frame.pixels.height() {
                 frame.pixels.clone()
             } else {
-                resize(
-                    &frame.pixels,
-                    target_width,
-                    target_height,
-                    FilterType::Triangle,
-                )
+                let filter = if sizing.antialias {
+                    FilterType::Lanczos3
+                } else {
+                    FilterType::Nearest
+                };
+                resize(&frame.pixels, target_width, target_height, filter)
             };
 
-        let mut lines = Vec::with_capacity((target_height as usize + 1) / 2);
+        let mut lines = Vec::with_capacity((target_height as usize).div_ceil(2));
         let mut y = 0;
         while y < scaled.height() {
             let mut line = String::with_capacity((target_width as usize / 2) * 24);
@@ -259,7 +305,17 @@ impl UnicodeBackend {
                     tl
                 };
 
-                append_quarter_block(&mut line, tl, tr, bl, br, x, y, options.background, options.use_8bit_color);
+                append_quarter_block(
+                    &mut line,
+                    tl,
+                    tr,
+                    bl,
+                    br,
+                    x,
+                    y,
+                    options.background,
+                    options.use_8bit_color,
+                );
                 x += 2;
             }
             line.push_str("\x1b[0m");
@@ -343,6 +399,8 @@ fn reset_bg(buf: &mut String) {
 }
 
 // Quarter block rendering: chooses the best glyph and colors for 2x2 pixel block
+// Four corner pixels and output styling are kept explicit at this pixel-emission boundary.
+#[allow(clippy::too_many_arguments)]
 fn append_quarter_block(
     line: &mut String,
     tl: Rgba<u8>,
@@ -446,10 +504,50 @@ fn find_best_quarter_block(
         // Calculate error for this configuration
         let mut error = 0.0f32;
         for (pixel, should_be_fg) in [
-            (tl, matches!(block, QuarterBlock::TopLeft | QuarterBlock::Top | QuarterBlock::Left | QuarterBlock::TopLeftBotRight | QuarterBlock::Full)),
-            (tr, matches!(block, QuarterBlock::TopRight | QuarterBlock::Top | QuarterBlock::Right | QuarterBlock::TopRightBotLeft | QuarterBlock::Full)),
-            (bl, matches!(block, QuarterBlock::BotLeft | QuarterBlock::Bottom | QuarterBlock::Left | QuarterBlock::TopRightBotLeft | QuarterBlock::Full)),
-            (br, matches!(block, QuarterBlock::BotRight | QuarterBlock::Bottom | QuarterBlock::Right | QuarterBlock::TopLeftBotRight | QuarterBlock::Full)),
+            (
+                tl,
+                matches!(
+                    block,
+                    QuarterBlock::TopLeft
+                        | QuarterBlock::Top
+                        | QuarterBlock::Left
+                        | QuarterBlock::TopLeftBotRight
+                        | QuarterBlock::Full
+                ),
+            ),
+            (
+                tr,
+                matches!(
+                    block,
+                    QuarterBlock::TopRight
+                        | QuarterBlock::Top
+                        | QuarterBlock::Right
+                        | QuarterBlock::TopRightBotLeft
+                        | QuarterBlock::Full
+                ),
+            ),
+            (
+                bl,
+                matches!(
+                    block,
+                    QuarterBlock::BotLeft
+                        | QuarterBlock::Bottom
+                        | QuarterBlock::Left
+                        | QuarterBlock::TopRightBotLeft
+                        | QuarterBlock::Full
+                ),
+            ),
+            (
+                br,
+                matches!(
+                    block,
+                    QuarterBlock::BotRight
+                        | QuarterBlock::Bottom
+                        | QuarterBlock::Right
+                        | QuarterBlock::TopLeftBotRight
+                        | QuarterBlock::Full
+                ),
+            ),
         ] {
             if let Some(color) = pixel {
                 let target = if should_be_fg { fg_avg } else { bg_avg };
@@ -480,7 +578,11 @@ fn average_colors(colors: &[[u8; 3]]) -> [u8; 3] {
     let sum_g: u32 = colors.iter().map(|c| c[1] as u32).sum();
     let sum_b: u32 = colors.iter().map(|c| c[2] as u32).sum();
     let len = colors.len() as u32;
-    [(sum_r / len) as u8, (sum_g / len) as u8, (sum_b / len) as u8]
+    [
+        (sum_r / len) as u8,
+        (sum_g / len) as u8,
+        (sum_b / len) as u8,
+    ]
 }
 
 fn color_distance(c1: [u8; 3], c2: [u8; 3]) -> f32 {
@@ -492,4 +594,236 @@ fn color_distance(c1: [u8; 3], c2: [u8; 3]) -> f32 {
 
 fn colors_similar(colors: &[[u8; 3]], avg: [u8; 3]) -> bool {
     colors.iter().all(|&c| color_distance(c, avg) < 30.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::capabilities::TerminalSize;
+    use crate::config::RenderSizing;
+    use image::{ImageBuffer, Rgba};
+    use std::time::Duration;
+
+    fn frame_solid(width: u32, height: u32, rgba: [u8; 4]) -> Frame {
+        Frame {
+            pixels: ImageBuffer::from_pixel(width, height, Rgba(rgba)),
+            delay: Duration::ZERO,
+        }
+    }
+
+    fn frame_checkerboard(width: u32, height: u32) -> Frame {
+        let mut img = ImageBuffer::new(width, height);
+        for y in 0..height {
+            for x in 0..width {
+                let on = (x + y) % 2 == 0;
+                let v = if on { 255 } else { 0 };
+                img.put_pixel(x, y, Rgba([v, v, v, 255]));
+            }
+        }
+        Frame {
+            pixels: img,
+            delay: Duration::ZERO,
+        }
+    }
+
+    #[test]
+    fn fit_height_allows_width_overflow_quarter_blocks() {
+        let backend = UnicodeBackend;
+        let frame = frame_solid(20, 4, [255, 0, 0, 255]);
+        let terminal = TerminalSize {
+            columns: 80,
+            rows: 24,
+            width_pixels: None,
+            height_pixels: None,
+        };
+
+        let sizing_no_fit = RenderSizing {
+            width_cells: Some(5),
+            height_cells: None,
+            fit_width: false,
+            fit_height: false,
+            upscale: false,
+            upscale_integer: false,
+            width_stretch: 1.0,
+            antialias: true,
+        };
+        let sizing_fit_height = RenderSizing {
+            fit_height: true,
+            ..sizing_no_fit
+        };
+
+        let r1 = backend
+            .render(
+                &frame,
+                RenderOptions {
+                    sizing: sizing_no_fit,
+                    terminal,
+                    background: BackgroundStyle {
+                        color: None,
+                        pattern: None,
+                        pattern_size: 1,
+                    },
+                    pixelation: PixelationMode::Quarter,
+                    use_8bit_color: false,
+                    compress_level: 1,
+                    verbose: false,
+                },
+            )
+            .expect("render without fit-height");
+
+        let r2 = backend
+            .render(
+                &frame,
+                RenderOptions {
+                    sizing: sizing_fit_height,
+                    terminal,
+                    background: BackgroundStyle {
+                        color: None,
+                        pattern: None,
+                        pattern_size: 1,
+                    },
+                    pixelation: PixelationMode::Quarter,
+                    use_8bit_color: false,
+                    compress_level: 1,
+                    verbose: false,
+                },
+            )
+            .expect("render with fit-height");
+
+        assert!(r2.width_cells > r1.width_cells);
+    }
+
+    #[test]
+    fn integer_upscale_floors_scale_factor() {
+        let backend = UnicodeBackend;
+        let frame = frame_solid(10, 10, [0, 255, 0, 255]);
+        let terminal = TerminalSize {
+            columns: 80,
+            rows: 24,
+            width_pixels: None,
+            height_pixels: None,
+        };
+
+        let sizing_continuous = RenderSizing {
+            width_cells: Some(15),
+            height_cells: Some(8),
+            fit_width: false,
+            fit_height: false,
+            upscale: true,
+            upscale_integer: false,
+            width_stretch: 1.0,
+            antialias: true,
+        };
+        let sizing_integer = RenderSizing {
+            upscale_integer: true,
+            ..sizing_continuous
+        };
+
+        let r1 = backend
+            .render(
+                &frame,
+                RenderOptions {
+                    sizing: sizing_continuous,
+                    terminal,
+                    background: BackgroundStyle {
+                        color: None,
+                        pattern: None,
+                        pattern_size: 1,
+                    },
+                    pixelation: PixelationMode::Quarter,
+                    use_8bit_color: false,
+                    compress_level: 1,
+                    verbose: false,
+                },
+            )
+            .expect("render without integer scaling");
+
+        let r2 = backend
+            .render(
+                &frame,
+                RenderOptions {
+                    sizing: sizing_integer,
+                    terminal,
+                    background: BackgroundStyle {
+                        color: None,
+                        pattern: None,
+                        pattern_size: 1,
+                    },
+                    pixelation: PixelationMode::Quarter,
+                    use_8bit_color: false,
+                    compress_level: 1,
+                    verbose: false,
+                },
+            )
+            .expect("render with integer scaling");
+
+        assert!(r1.width_cells > r2.width_cells);
+    }
+
+    #[test]
+    fn no_antialias_changes_scaled_output() {
+        let backend = UnicodeBackend;
+        let frame = frame_checkerboard(8, 8);
+        let terminal = TerminalSize {
+            columns: 80,
+            rows: 24,
+            width_pixels: None,
+            height_pixels: None,
+        };
+
+        let sizing_aa = RenderSizing {
+            width_cells: Some(4),
+            height_cells: Some(2),
+            fit_width: false,
+            fit_height: false,
+            upscale: false,
+            upscale_integer: false,
+            width_stretch: 1.0,
+            antialias: true,
+        };
+        let sizing_no_aa = RenderSizing {
+            antialias: false,
+            ..sizing_aa
+        };
+
+        let r1 = backend
+            .render(
+                &frame,
+                RenderOptions {
+                    sizing: sizing_aa,
+                    terminal,
+                    background: BackgroundStyle {
+                        color: None,
+                        pattern: None,
+                        pattern_size: 1,
+                    },
+                    pixelation: PixelationMode::Half,
+                    use_8bit_color: false,
+                    compress_level: 1,
+                    verbose: false,
+                },
+            )
+            .expect("render with antialiasing");
+
+        let r2 = backend
+            .render(
+                &frame,
+                RenderOptions {
+                    sizing: sizing_no_aa,
+                    terminal,
+                    background: BackgroundStyle {
+                        color: None,
+                        pattern: None,
+                        pattern_size: 1,
+                    },
+                    pixelation: PixelationMode::Half,
+                    use_8bit_color: false,
+                    compress_level: 1,
+                    verbose: false,
+                },
+            )
+            .expect("render without antialiasing");
+
+        assert_ne!(r1.lines, r2.lines);
+    }
 }

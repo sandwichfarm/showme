@@ -26,8 +26,7 @@ impl Backend for SixelBackend {
         blend_transparency(&mut image, options.background);
 
         let sixel_data = encode_sixel(image)?;
-        let mut lines = Vec::with_capacity(1);
-        lines.push(sixel_data);
+        let lines = vec![sixel_data];
 
         Ok(RenderedFrame {
             lines,
@@ -47,7 +46,7 @@ fn encode_sixel(image: image::RgbaImage) -> Result<String> {
     let mut padded_height = height;
     if remainder != 0 {
         let add_rows = 6 - remainder;
-        data.extend(std::iter::repeat(0).take(add_rows * width * 4));
+        data.extend(std::iter::repeat_n(0, add_rows * width * 4));
         padded_height += add_rows;
     }
 
@@ -65,7 +64,8 @@ fn encode_sixel(image: image::RgbaImage) -> Result<String> {
         )?;
         let output_guard = OutputGuard { ptr: output };
 
-        sys::sixel_output_set_8bit_availability(output_guard.ptr, sys::CharacterSize::EightBit);
+        // Use 7-bit control sequences (ESC ...) so the output is valid UTF-8.
+        sys::sixel_output_set_8bit_availability(output_guard.ptr, sys::CharacterSize::SevenBit);
         sys::sixel_output_set_encode_policy(output_guard.ptr, sys::EncodePolicy::Fast);
 
         let mut dither: *mut sys::Dither = ptr::null_mut();
@@ -185,6 +185,8 @@ mod tests {
                     terminal: TerminalSize {
                         columns: 80,
                         rows: 24,
+                        width_pixels: None,
+                        height_pixels: None,
                     },
                     background: crate::backend::BackgroundStyle {
                         color: None,
@@ -194,6 +196,7 @@ mod tests {
                     pixelation: crate::config::PixelationMode::Quarter,
                     use_8bit_color: false,
                     compress_level: 1,
+                    verbose: false,
                 },
             )
             .expect("render sixel");

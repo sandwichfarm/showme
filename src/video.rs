@@ -5,9 +5,9 @@ use std::time::Duration;
 use ffmpeg_next as ffmpeg;
 
 use crate::error::{Result, RimgError};
-use crate::image::{Frame, ImageSequence};
+use crate::image::{DecodeBudget, Frame, ImageSequence, LoadLimits, check_dimensions};
 
-static FFMPEG_INIT: OnceLock<()> = OnceLock::new();
+static FFMPEG_INIT: OnceLock<std::result::Result<(), ffmpeg::Error>> = OnceLock::new();
 
 pub struct VideoLoader;
 
@@ -24,15 +24,32 @@ impl VideoLoader {
             .unwrap_or(false)
     }
 
-    fn ensure_initialized() {
-        FFMPEG_INIT.get_or_init(|| {
-            let _ = ffmpeg::init();
-        });
+    fn ensure_initialized() -> Result<()> {
+        FFMPEG_INIT
+            .get_or_init(ffmpeg::init)
+            .as_ref()
+            .map_err(|err| RimgError::other(format!("failed to initialize FFmpeg: {err}")))?;
+        Ok(())
     }
 }
 
 pub fn load_video(path: &Path) -> Result<Option<ImageSequence>> {
-    VideoLoader::ensure_initialized();
+    load_video_with_limits(path, LoadLimits::default())
+}
+
+pub(crate) fn load_video_with_limits(
+    path: &Path,
+    limits: LoadLimits,
+) -> Result<Option<ImageSequence>> {
+    limits.check_cancelled()?;
+    VideoLoader::ensure_initialized()?;
+    let mut budget = DecodeBudget::new(limits);
+    if budget.full() {
+        return Ok(Some(ImageSequence {
+            path: path.to_path_buf(),
+            frames: Vec::new(),
+        }));
+    }
 
     let mut input = match ffmpeg::format::input(&path) {
         Ok(ctx) => ctx,
@@ -48,9 +65,8 @@ pub fn load_video(path: &Path) -> Result<Option<ImageSequence>> {
     let time_base = video_stream.time_base();
     let avg_frame_rate = video_stream.avg_frame_rate();
 
-    let codec_context =
-        ffmpeg::codec::context::Context::from_parameters(video_stream.parameters())
-            .map_err(|err| RimgError::other(format!("failed to load stream parameters: {err}")))?;
+    let codec_context = ffmpeg::codec::context::Context::from_parameters(video_stream.parameters())
+        .map_err(|err| RimgError::other(format!("failed to load stream parameters: {err}")))?;
 
     let mut decoder = codec_context
         .decoder()
@@ -59,6 +75,7 @@ pub fn load_video(path: &Path) -> Result<Option<ImageSequence>> {
 
     let target_width = decoder.width();
     let target_height = decoder.height();
+    budget.check_frame(target_width, target_height)?;
 
     let mut scaler = ffmpeg::software::scaling::context::Context::get(
         decoder.format(),
@@ -89,23 +106,30 @@ pub fn load_video(path: &Path) -> Result<Option<ImageSequence>> {
                 avg_frame_rate,
                 &mut last_pts,
                 &mut frames,
+                &mut budget,
             )?;
+            if budget.full() {
+                break;
+            }
         }
     }
 
-    decoder
-        .send_eof()
-        .map_err(|err| RimgError::other(format!("decoder send_eof failed: {err}")))?;
-    receive_frames(
-        &mut decoder,
-        &mut scaler,
-        target_width,
-        target_height,
-        time_base,
-        avg_frame_rate,
-        &mut last_pts,
-        &mut frames,
-    )?;
+    if !budget.full() {
+        decoder
+            .send_eof()
+            .map_err(|err| RimgError::other(format!("decoder send_eof failed: {err}")))?;
+        receive_frames(
+            &mut decoder,
+            &mut scaler,
+            target_width,
+            target_height,
+            time_base,
+            avg_frame_rate,
+            &mut last_pts,
+            &mut frames,
+            &mut budget,
+        )?;
+    }
 
     if frames.is_empty() {
         return Ok(None);
@@ -117,6 +141,8 @@ pub fn load_video(path: &Path) -> Result<Option<ImageSequence>> {
     }))
 }
 
+// Decoder state and stream timing are explicit at the FFmpeg receive boundary.
+#[allow(clippy::too_many_arguments)]
 fn receive_frames(
     decoder: &mut ffmpeg::codec::decoder::Video,
     scaler: &mut ffmpeg::software::scaling::context::Context,
@@ -126,11 +152,23 @@ fn receive_frames(
     avg_frame_rate: ffmpeg::Rational,
     last_pts: &mut Option<i64>,
     output: &mut Vec<Frame>,
+    budget: &mut DecodeBudget,
 ) -> Result<()> {
     let mut decoded = ffmpeg::util::frame::Video::empty();
     let mut converted = ffmpeg::util::frame::Video::new(ffmpeg::format::Pixel::RGBA, width, height);
 
-    while decoder.receive_frame(&mut decoded).is_ok() {
+    while !budget.full() {
+        match decoder.receive_frame(&mut decoded) {
+            Ok(()) => {}
+            Err(ffmpeg::Error::Eof) => break,
+            Err(ffmpeg::Error::Other { errno }) if errno == libc::EAGAIN => break,
+            Err(err) => {
+                return Err(RimgError::other(format!(
+                    "video frame decode failed: {err}"
+                )));
+            }
+        }
+        budget.check_frame(width, height)?;
         scaler
             .run(&decoded, &mut converted)
             .map_err(|err| RimgError::other(format!("failed to scale video frame: {err}")))?;
@@ -139,10 +177,12 @@ fn receive_frames(
         let pts = decoded.pts();
         let delay = determine_delay(pts, time_base, avg_frame_rate, last_pts);
 
-        output.push(Frame {
+        let frame = Frame {
             pixels: image,
             delay,
-        });
+        };
+        budget.add(&frame);
+        output.push(frame);
     }
 
     Ok(())
@@ -157,11 +197,14 @@ fn determine_delay(
     if let Some(pts_value) = pts {
         if let Some(prev_pts) = last_pts {
             if time_base.denominator() != 0 {
-                let seconds = (pts_value - *prev_pts) as f64 * time_base.numerator() as f64
+                let seconds = pts_value.saturating_sub(*prev_pts) as f64
+                    * time_base.numerator() as f64
                     / time_base.denominator() as f64;
-                if seconds > 0.0 {
+                if seconds > 0.0
+                    && let Ok(delay) = Duration::try_from_secs_f64(seconds)
+                {
                     *last_pts = Some(pts_value);
-                    return Duration::from_secs_f64(seconds);
+                    return delay;
                 }
             }
         } else {
@@ -185,8 +228,23 @@ fn frame_to_image(
     width: u32,
     height: u32,
 ) -> Result<image::RgbaImage> {
-    let stride = frame.stride(0) as usize;
+    check_dimensions(width, height)?;
+    if frame.width() != width || frame.height() != height {
+        return Err(RimgError::other(
+            "video frame dimensions do not match the RGBA conversion target",
+        ));
+    }
+    let stride = frame.stride(0);
     let data = frame.data(0);
+    let row_bytes = width as usize * 4;
+    let required = stride
+        .saturating_mul(height as usize - 1)
+        .saturating_add(row_bytes);
+    if stride < row_bytes || data.len() < required {
+        return Err(RimgError::other(
+            "invalid RGBA video frame stride or data length",
+        ));
+    }
     let mut buffer = vec![0u8; (width * height * 4) as usize];
     for y in 0..height as usize {
         let src_offset = y * stride;
@@ -197,4 +255,46 @@ fn frame_to_image(
     }
     image::RgbaImage::from_raw(width, height, buffer)
         .ok_or_else(|| RimgError::other("failed to create RGBA image from frame"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rgba_conversion_respects_native_row_padding() {
+        let mut native = ffmpeg::util::frame::Video::new(ffmpeg::format::Pixel::RGBA, 3, 2);
+        let stride = native.stride(0);
+        native.data_mut(0).fill(0xee);
+        for y in 0..2 {
+            for x in 0..3 {
+                let offset = y * stride + x * 4;
+                native.data_mut(0)[offset..offset + 4]
+                    .copy_from_slice(&[x as u8, y as u8, 90, 255]);
+            }
+        }
+        let image = frame_to_image(&native, 3, 2).unwrap();
+        for (x, y, pixel) in image.enumerate_pixels() {
+            assert_eq!(pixel.0, [x as u8, y as u8, 90, 255]);
+        }
+    }
+
+    #[test]
+    fn invalid_video_frame_geometry_returns_an_error() {
+        let native = ffmpeg::util::frame::Video::new(ffmpeg::format::Pixel::RGBA, 3, 2);
+        assert!(frame_to_image(&native, 4, 2).is_err());
+        assert!(frame_to_image(&native, 0, 2).is_err());
+    }
+
+    #[test]
+    fn invalid_timestamps_use_frame_rate_without_overflowing() {
+        let mut previous = Some(i64::MIN);
+        let delay = determine_delay(
+            Some(i64::MAX),
+            ffmpeg::Rational(i32::MAX, 1),
+            ffmpeg::Rational(50, 1),
+            &mut previous,
+        );
+        assert_eq!(delay, Duration::from_millis(20));
+    }
 }

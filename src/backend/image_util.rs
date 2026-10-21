@@ -1,39 +1,22 @@
+#[cfg(any(feature = "kitty", feature = "iterm2"))]
 use image::ImageEncoder;
-use image::codecs::png::PngEncoder;
-use image::imageops::{FilterType, resize};
+#[cfg(any(feature = "kitty", feature = "iterm2"))]
+use image::codecs::png::{
+    CompressionType as PngCompressionType, FilterType as PngFilterType, PngEncoder,
+};
+#[cfg(feature = "sixel")]
+use image::imageops::{FilterType as ImageFilterType, resize};
 
 use super::BackgroundStyle;
+#[cfg(feature = "sixel")]
 use crate::backend::RenderOptions;
+#[cfg(any(feature = "kitty", feature = "iterm2"))]
 use crate::error::{Result, RimgError};
+#[cfg(feature = "sixel")]
 use crate::image::Frame;
 
-/// Scale frame for graphics protocols (Kitty, iTerm2, Sixel)
-/// These can display high-resolution images, so we keep original resolution
-pub(crate) fn scale_frame_for_graphics(frame: &Frame, options: RenderOptions) -> (image::RgbaImage, u32, u32) {
-    let pixels = &frame.pixels;
-
-    // Calculate cell allocation (how much terminal space to use)
-    let max_width_cells = options
-        .sizing
-        .width_cells
-        .unwrap_or_else(|| pixels.width().min(options.terminal.columns as u32))
-        .max(1)
-        .min(options.terminal.columns as u32);
-
-    let max_height_cells = options
-        .sizing
-        .height_cells
-        .unwrap_or_else(|| pixels.height().min(options.terminal.rows as u32))
-        .max(1)
-        .min(options.terminal.rows as u32);
-
-    // For graphics protocols: keep original image resolution
-    // The terminal will display it crisply within the allocated cells
-    // Only downscale if user explicitly set width/height limits
-    (pixels.clone(), max_width_cells, max_height_cells)
-}
-
-/// Scale frame for Unicode backend - needs aggressive downscaling to match character blocks
+/// Scale frame to the cell allocation used by the Sixel backend.
+#[cfg(feature = "sixel")]
 pub(crate) fn scale_frame(frame: &Frame, options: RenderOptions) -> (image::RgbaImage, u32, u32) {
     let pixels = &frame.pixels;
 
@@ -100,9 +83,9 @@ pub(crate) fn scale_frame(frame: &Frame, options: RenderOptions) -> (image::Rgba
     } else {
         // Choose filter based on antialias setting
         let filter = if options.sizing.antialias {
-            FilterType::Lanczos3 // High quality antialiasing
+            ImageFilterType::Lanczos3 // High quality antialiasing
         } else {
-            FilterType::Nearest // Fast, no antialiasing
+            ImageFilterType::Nearest // Fast, no antialiasing
         };
         resize(pixels, target_width, target_height, filter)
     };
@@ -110,9 +93,21 @@ pub(crate) fn scale_frame(frame: &Frame, options: RenderOptions) -> (image::Rgba
     (scaled, width_cells, height_cells)
 }
 
-pub(crate) fn encode_png(image: &image::RgbaImage, backend_name: &str) -> Result<Vec<u8>> {
+#[cfg(any(feature = "kitty", feature = "iterm2"))]
+pub(crate) fn encode_png(
+    image: &image::RgbaImage,
+    backend_name: &str,
+    compress_level: u8,
+) -> Result<Vec<u8>> {
+    let (compression, filter) = match compress_level {
+        0 => (PngCompressionType::Fast, PngFilterType::NoFilter),
+        1..=3 => (PngCompressionType::Fast, PngFilterType::Sub),
+        4..=6 => (PngCompressionType::Default, PngFilterType::Adaptive),
+        _ => (PngCompressionType::Best, PngFilterType::Adaptive),
+    };
+
     let mut encoded = Vec::new();
-    PngEncoder::new(&mut encoded)
+    PngEncoder::new_with_quality(&mut encoded, compression, filter)
         .write_image(
             image.as_raw(),
             image.width(),
@@ -127,6 +122,7 @@ pub(crate) fn encode_png(image: &image::RgbaImage, backend_name: &str) -> Result
     Ok(encoded)
 }
 
+#[cfg(any(feature = "kitty", feature = "iterm2", feature = "sixel"))]
 pub(crate) fn blend_transparency(image: &mut image::RgbaImage, background: BackgroundStyle) {
     if background.color.is_none() && background.pattern.is_none() {
         return;
@@ -173,7 +169,7 @@ pub(crate) fn checkerboard(x: u32, y: u32, pattern_size: u16) -> bool {
     let size = pattern_size.max(1) as u32;
     let tile = size * 4;
     let tile = tile.max(1);
-    ((x / tile) + (y / tile)) % 2 == 0
+    ((x / tile) + (y / tile)).is_multiple_of(2)
 }
 
 fn pattern_rgb(color: crate::config::RgbColor) -> [u8; 3] {

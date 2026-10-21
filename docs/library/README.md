@@ -9,6 +9,7 @@ Add the crate to a Cargo project directly from the local checkout:
 ```toml
 [dependencies]
 showme = { path = "../showme", features = ["kitty", "iterm2"] }
+clap = "4" # Needed by the Cli::parse() example.
 # Or from git:
 # showme = { git = "https://github.com/sandwichfarm/showme", features = ["kitty", "iterm2"] }
 ```
@@ -24,7 +25,7 @@ Feature flags:
 | `qoi` | ✅ | Enables QOI image format support. |
 | `pdf` | ✅ | Enables PDF rendering support. |
 | `svg` | ✅ | Enables SVG/SVGZ rendering support. |
-| `sixel` | ⛔️ | Optional Sixel backend implemented via `libsixel`. Requires the native library. |
+| `sixel` | ⛔️ | Optional Sixel backend implemented via `libsixel`. Builds bundled static libsixel; requires Autotools and a C compiler. |
 
 Disable default features with `--no-default-features` or by enumerating only the features you want.
 
@@ -34,7 +35,7 @@ The crate is split into cooperating modules:
 
 - `cli`: Clap-based argument parser. Produces a `Config` struct that the renderer understands.
 - `config`: Types describing user intent (backend, sizing, grid layout, timing, transparency handling).
-- `renderer`: Orchestrates backend selection, terminal capability probing, image loading (using Rayon for parallelism), and output pacing.
+- `renderer`: Orchestrates backend selection, terminal capability probing, sequential input loading, and output pacing. Decoder work runs in the configured Rayon pool.
 - `backend`: Trait (`Backend`) plus concrete implementations (`UnicodeBackend`, `KittyBackend`, `ITerm2Backend`, optional `SixelBackend`). Helpers for chunking, scaling, and background blending.
 - `image`: Loader supporting multiple formats (static images, GIF, QOI, PDF, SVG, video). Produces `ImageSequence` values containing decoded frames and playback delays.
 - `video`: Video decoder using ffmpeg (feature-gated).
@@ -48,7 +49,8 @@ The typical flow is `Cli::parse() → Cli::into_config() → Renderer::build(con
 
 ## 3. Example: embedding the renderer
 
-```rust
+```rust,no_run
+use clap::Parser;
 use showme::{Cli, Renderer};
 
 fn main() -> showme::Result<()> {
@@ -62,7 +64,8 @@ fn main() -> showme::Result<()> {
 
 When integrating into a larger app you can bypass `Cli` entirely:
 
-```rust
+```rust,no_run
+# fn main() -> showme::Result<()> {
 use std::num::NonZeroUsize;
 use showme::{BackendKind, Config, GridOptions, RenderSizing, Renderer};
 
@@ -119,9 +122,11 @@ let config = Config {
 };
 
 Renderer::build(config)?.run()?;
+# Ok(())
+# }
 ```
 
-> **TTY requirement**: `Renderer::build` calls `ensure_tty_stdout()`. If your application wants to render into an off-screen buffer, you must provide an alternative backend implementation that skips this guard.
+> **Output destination**: stdout rendering requires a terminal. Set `Config::output_file` for headless file output; this uses deterministic geometry and skips terminal setup on stdout. `Config::default()` provides deterministic library defaults, and a caller can attach an atomic cancellation flag with `Renderer::with_cancellation`.
 
 ## 4. Module details
 
@@ -148,9 +153,9 @@ Key types:
 
 Responsibilities:
 
-- Picks a backend (respecting feature availability) and falls back to unicode if the requested backend isn't compiled in.
+- Auto selection chooses an available backend; explicitly requesting a backend that was not compiled in returns an error.
 - Records the terminal size at startup. Unicode and grid rendering rely on this to scale correctly.
-- Loads images in parallel with Rayon. Thread pool can be configured via `Config::threads`.
+- Loads inputs sequentially to bound retained media. `Config::threads` configures the Rayon pool available to decoders.
 - `image::load_image` handles multiple formats and returns `ImageSequence` with decoded frames.
 - Handles playback pacing: `--loop`, `--loops`, `--wait`, frame delays, duration limits.
 - Provides title formatting (`%f`, `%b`, `%w`, `%h`, `%n`, `%%`).
@@ -167,7 +172,7 @@ Responsibilities:
 - `BackgroundStyle` is computed from the config: optional solid color plus optional checkerboard color/size.
 - `UnicodeBackend`: Rasterizes using half-block or quarter-block characters with 24-bit or 8-bit ANSI colors. Supports checkerboard transparency.
 - `KittyBackend`: PNG-encodes the frame, emits Kitty escape sequences in base64 chunks with DCS passthrough for tmux.
-- `ITerm2Backend`: Uses OSC 1337 protocol, streaming base64 PNG chunks with inline metadata.
+- `ITerm2Backend`: Emits complete OSC 1337 `File` payloads, or documented iTerm2 3.5+ multipart framing above the transport limit. Large transfers require terminal support for that extension.
 - `SixelBackend` *(feature-gated)*: Uses `libsixel` to encode frames with dithering.
 - `chunk_util`: Encodes data once and provides reusable base64 chunks to reduce allocations.
 - `image_util`: Handles resizing (Lanczos3/Nearest filter), background blending, PNG encoding.
@@ -232,7 +237,7 @@ Responsibilities:
 
 ## 6. Performance considerations
 
-- **Parallel loading**: Images are loaded in parallel using Rayon. Configure thread count with `Config::threads`.
+- **Decoder parallelism**: Configure the Rayon worker pool with `Config::threads`. Inputs are loaded sequentially rather than preloaded as an entire batch.
 - **Compression level**: PNG compression for Kitty/iTerm2 backends can be adjusted (0-9) via `Config::compress_level`.
 - **Antialiasing**: Lanczos3 filter for high-quality scaling, or Nearest for pixel-perfect integer upscaling.
 - **8-bit color mode**: Reduces output size by using xterm-256 palette instead of 24-bit RGB.

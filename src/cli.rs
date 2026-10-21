@@ -8,7 +8,10 @@ use std::sync::OnceLock;
 
 use clap::{ArgAction, Parser};
 
-use crate::config::{BackendKind, BackgroundColor, Config, GridOptions, PixelationMode, RenderSizing, RotationMode, RgbColor};
+use crate::config::{
+    BackendKind, BackgroundColor, Config, GridOptions, PixelationMode, RenderSizing, RgbColor,
+    RotationMode,
+};
 use crate::error::{Result, RimgError};
 
 #[derive(Debug, Parser)]
@@ -59,11 +62,21 @@ pub struct Cli {
     geometry: Option<String>,
 
     /// Maximum width in terminal cells
-    #[arg(short = 'w', long = "width", value_name = "CELLS", conflicts_with = "geometry")]
+    #[arg(
+        short = 'w',
+        long = "width",
+        value_name = "CELLS",
+        conflicts_with = "geometry"
+    )]
     width: Option<u32>,
 
     /// Maximum height in terminal cells
-    #[arg(short = 'H', long = "height", value_name = "CELLS", conflicts_with = "geometry")]
+    #[arg(
+        short = 'H',
+        long = "height",
+        value_name = "CELLS",
+        conflicts_with = "geometry"
+    )]
     height: Option<u32>,
 
     /// Scale to fit width (may overflow height)
@@ -71,11 +84,18 @@ pub struct Cli {
     fit_width: bool,
 
     /// Scale to fit height (may overflow width)
-    #[arg(long = "fit-height", action = ArgAction::SetTrue)]
+    #[arg(long = "fit-height", action = ArgAction::SetTrue, conflicts_with = "fit_width")]
     fit_height: bool,
 
     /// Allow upscaling images smaller than terminal size. Optional 'i' for integer scaling
-    #[arg(short = 'U', long = "upscale", value_name = "MODE")]
+    #[arg(
+        short = 'U',
+        long = "upscale",
+        value_name = "MODE",
+        num_args = 0..=1,
+        default_missing_value = "on",
+        value_parser = ["on", "i"],
+    )]
     upscale: Option<String>,
 
     /// Width stretch factor for aspect ratio correction (auto-detected if not specified)
@@ -99,7 +119,12 @@ pub struct Cli {
     loop_forever: bool,
 
     /// Number of times to loop animation/video (-1 for infinite)
-    #[arg(long = "loops", value_name = "COUNT", conflicts_with = "loop_forever")]
+    #[arg(
+        long = "loops",
+        value_name = "COUNT",
+        conflicts_with = "loop_forever",
+        allow_negative_numbers = true
+    )]
     loops: Option<i32>,
 
     /// Only render the first N frames of animation/video
@@ -200,11 +225,11 @@ pub struct Cli {
     force_image: bool,
 
     /// Enable horizontal scrolling animation. Optional delay in ms (default: 60)
-    #[arg(long = "scroll", value_name = "MS")]
+    #[arg(long = "scroll", value_name = "MS", num_args = 0..=1, default_missing_value = "60", conflicts_with = "grid")]
     scroll: Option<String>,
 
     /// Delta x and y when scrolling (default: 1:0)
-    #[arg(long = "delta-move", value_name = "DX:DY")]
+    #[arg(long = "delta-move", value_name = "DX:DY", allow_hyphen_values = true)]
     delta_move: Option<String>,
 }
 
@@ -258,6 +283,20 @@ impl Cli {
             (self.width, self.height)
         };
 
+        if width_cells == Some(0) || height_cells == Some(0) {
+            return Err(RimgError::other(
+                "width and height must be greater than zero",
+            ));
+        }
+        if self.threads == Some(0) {
+            return Err(RimgError::other("threads must be greater than zero"));
+        }
+        if self.loops.is_some_and(|count| count < -1) {
+            return Err(RimgError::other(
+                "loops must be -1 (infinite) or non-negative",
+            ));
+        }
+
         // Parse upscale settings
         let (upscale, upscale_integer) = parse_upscale(self.upscale.as_deref());
 
@@ -271,16 +310,21 @@ impl Cli {
         }
 
         // Validate width stretch if provided
-        if let Some(stretch) = self.width_stretch {
-            if stretch <= 0.0 {
-                return Err(RimgError::other("width-stretch must be positive"));
-            }
+        if let Some(stretch) = self.width_stretch
+            && (!stretch.is_finite() || stretch <= 0.0)
+        {
+            return Err(RimgError::other(
+                "width-stretch must be finite and positive",
+            ));
         }
 
         // Use provided width_stretch or auto-detect from terminal
         let width_stretch = self.width_stretch.unwrap_or_else(|| {
-            use crate::capabilities::current_terminal_size;
-            current_terminal_size().recommended_width_stretch()
+            if self.output_file.is_some() {
+                2.0
+            } else {
+                crate::capabilities::current_terminal_size().recommended_width_stretch()
+            }
         });
 
         Ok(Config {
@@ -346,52 +390,57 @@ fn parse_rotation(value: &str) -> std::result::Result<RotationMode, String> {
 }
 
 fn parse_geometry(spec: &str) -> Result<(Option<u32>, Option<u32>)> {
-
     // Parse WIDTHxHEIGHT, WIDTHx, or xHEIGHT
-    if spec.starts_with('x') {
+    if let Some(height) = spec.strip_prefix('x') {
         // xHEIGHT
-        let height = spec[1..].parse::<u32>().map_err(|_| {
-            RimgError::other(format!("invalid height in geometry '{}'", spec))
-        })?;
+        let height = height
+            .parse::<u32>()
+            .map_err(|_| RimgError::other(format!("invalid height in geometry '{}'", spec)))?;
         Ok((None, Some(height)))
-    } else if spec.ends_with('x') {
+    } else if let Some(width) = spec.strip_suffix('x') {
         // WIDTHx
-        let width = spec[..spec.len()-1].parse::<u32>().map_err(|_| {
-            RimgError::other(format!("invalid width in geometry '{}'", spec))
-        })?;
+        let width = width
+            .parse::<u32>()
+            .map_err(|_| RimgError::other(format!("invalid width in geometry '{}'", spec)))?;
         Ok((Some(width), None))
     } else if let Some(pos) = spec.find('x') {
         // WIDTHxHEIGHT
-        let width = spec[..pos].parse::<u32>().map_err(|_| {
-            RimgError::other(format!("invalid width in geometry '{}'", spec))
-        })?;
-        let height = spec[pos+1..].parse::<u32>().map_err(|_| {
-            RimgError::other(format!("invalid height in geometry '{}'", spec))
-        })?;
+        let width = spec[..pos]
+            .parse::<u32>()
+            .map_err(|_| RimgError::other(format!("invalid width in geometry '{}'", spec)))?;
+        let height = spec[pos + 1..]
+            .parse::<u32>()
+            .map_err(|_| RimgError::other(format!("invalid height in geometry '{}'", spec)))?;
         Ok((Some(width), Some(height)))
     } else {
-        Err(RimgError::other(format!("invalid geometry '{}'. Expected WIDTHxHEIGHT, WIDTHx, or xHEIGHT", spec)))
+        Err(RimgError::other(format!(
+            "invalid geometry '{}'. Expected WIDTHxHEIGHT, WIDTHx, or xHEIGHT",
+            spec
+        )))
     }
 }
 
 fn parse_upscale(spec: Option<&str>) -> (bool, bool) {
     match spec {
         None => (false, false),
-        Some(s) if s.is_empty() => (true, false),
+        Some("") => (true, false),
         Some(s) if s.eq_ignore_ascii_case("i") => (true, true),
         Some(_) => (true, false),
     }
 }
 
-fn parse_scroll_settings(scroll_ms: Option<&str>, delta: Option<&str>) -> Result<(bool, std::time::Duration, i32, i32)> {
+fn parse_scroll_settings(
+    scroll_ms: Option<&str>,
+    delta: Option<&str>,
+) -> Result<(bool, std::time::Duration, i32, i32)> {
     let scroll_enabled = scroll_ms.is_some();
     let scroll_delay = if let Some(ms_str) = scroll_ms {
         if ms_str.is_empty() {
             std::time::Duration::from_millis(60) // default
         } else {
-            let ms = ms_str.parse::<u64>().map_err(|_| {
-                RimgError::other(format!("invalid scroll delay '{}'", ms_str))
-            })?;
+            let ms = ms_str
+                .parse::<u64>()
+                .map_err(|_| RimgError::other(format!("invalid scroll delay '{}'", ms_str)))?;
             std::time::Duration::from_millis(ms)
         }
     } else {
@@ -400,16 +449,16 @@ fn parse_scroll_settings(scroll_ms: Option<&str>, delta: Option<&str>) -> Result
 
     let (dx, dy) = if let Some(delta_str) = delta {
         let parts: Vec<&str> = delta_str.split(':').collect();
-        if parts.is_empty() {
-            return Err(RimgError::other("delta-move requires at least dx value"));
+        if parts.is_empty() || parts.len() > 2 {
+            return Err(RimgError::other("delta-move must be DX or DX:DY"));
         }
-        let dx = parts[0].parse::<i32>().map_err(|_| {
-            RimgError::other(format!("invalid dx in delta-move '{}'", parts[0]))
-        })?;
+        let dx = parts[0]
+            .parse::<i32>()
+            .map_err(|_| RimgError::other(format!("invalid dx in delta-move '{}'", parts[0])))?;
         let dy = if parts.len() > 1 {
-            parts[1].parse::<i32>().map_err(|_| {
-                RimgError::other(format!("invalid dy in delta-move '{}'", parts[1]))
-            })?
+            parts[1]
+                .parse::<i32>()
+                .map_err(|_| RimgError::other(format!("invalid dy in delta-move '{}'", parts[1])))?
         } else {
             0
         };
@@ -423,7 +472,7 @@ fn parse_scroll_settings(scroll_ms: Option<&str>, delta: Option<&str>) -> Result
 
 fn parse_grid(spec: &str, spacing: u16) -> Result<GridOptions> {
     let parts: Vec<&str> = spec.split('x').collect();
-    if parts.is_empty() {
+    if parts.is_empty() || parts.len() > 2 {
         return Err(RimgError::other("grid value must be COLS or COLSxROWS"));
     }
 
@@ -478,10 +527,11 @@ fn parse_duration(raw: &str) -> Result<std::time::Duration> {
                 "invalid millisecond duration '{raw}': expected number"
             ))
         })?;
-        if ms < 0.0 {
-            return Err(RimgError::other("duration must be non-negative"));
+        if !ms.is_finite() || ms < 0.0 {
+            return Err(RimgError::other("duration must be finite and non-negative"));
         }
-        return Ok(std::time::Duration::from_millis(ms.round() as u64));
+        return std::time::Duration::try_from_secs_f64(ms.round() / 1000.0)
+            .map_err(|_| RimgError::other("duration is too large"));
     }
 
     let seconds_str = trimmed.strip_suffix('s').unwrap_or(trimmed);
@@ -489,10 +539,11 @@ fn parse_duration(raw: &str) -> Result<std::time::Duration> {
         .trim()
         .parse()
         .map_err(|_| RimgError::other(format!("invalid duration '{raw}': expected number")))?;
-    if seconds < 0.0 {
-        return Err(RimgError::other("duration must be non-negative"));
+    if !seconds.is_finite() || seconds < 0.0 {
+        return Err(RimgError::other("duration must be finite and non-negative"));
     }
-    Ok(std::time::Duration::from_secs_f64(seconds))
+    std::time::Duration::try_from_secs_f64(seconds)
+        .map_err(|_| RimgError::other("duration is too large"))
 }
 
 fn parse_background_color(raw: &str) -> Result<BackgroundColor> {
@@ -530,7 +581,7 @@ fn parse_rgb_color(raw: &str) -> Result<RgbColor> {
 }
 
 fn parse_hex_color(input: &str) -> Option<RgbColor> {
-    if input.len() == 7 && input.starts_with('#') {
+    if input.len() == 7 && input.starts_with('#') && input.is_ascii() {
         let r = u8::from_str_radix(&input[1..3], 16).ok()?;
         let g = u8::from_str_radix(&input[3..5], 16).ok()?;
         let b = u8::from_str_radix(&input[5..7], 16).ok()?;
@@ -623,9 +674,8 @@ fn read_filelist(filelist_path: &Path, relative_to_filelist: bool) -> Result<Vec
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|| PathBuf::from("."))
     } else {
-        std::env::current_dir().map_err(|err| {
-            RimgError::other(format!("failed to get current directory: {}", err))
-        })?
+        std::env::current_dir()
+            .map_err(|err| RimgError::other(format!("failed to get current directory: {}", err)))?
     };
 
     for (line_num, line) in reader.lines().enumerate() {
@@ -661,6 +711,26 @@ fn read_filelist(filelist_path: &Path, relative_to_filelist: bool) -> Result<Vec
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_upscale_without_mode_does_not_consume_input_path() {
+        let cli =
+            Cli::try_parse_from(["showme", "--upscale", "on", "small-icon.png"]).expect("parse");
+        let config = cli.into_config().expect("config");
+        assert!(config.sizing.upscale);
+        assert!(!config.sizing.upscale_integer);
+        assert_eq!(config.inputs, vec![PathBuf::from("small-icon.png")]);
+    }
+
+    #[test]
+    fn parses_upscale_integer_mode() {
+        let cli =
+            Cli::try_parse_from(["showme", "--upscale", "i", "pixel-art.png"]).expect("parse");
+        let config = cli.into_config().expect("config");
+        assert!(config.sizing.upscale);
+        assert!(config.sizing.upscale_integer);
+        assert_eq!(config.inputs, vec![PathBuf::from("pixel-art.png")]);
+    }
 
     #[test]
     fn parses_grid_with_rows() {
@@ -729,7 +799,7 @@ mod tests {
             let mut file = File::create(&filelist_path).expect("create file");
             writeln!(file, "# This is a comment").unwrap();
             writeln!(file, "image1.jpg").unwrap();
-            writeln!(file, "").unwrap();
+            writeln!(file).unwrap();
             writeln!(file, "image2.png").unwrap();
             writeln!(file, "# Another comment").unwrap();
             writeln!(file, "subdir/image3.gif").unwrap();

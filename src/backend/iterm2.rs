@@ -1,5 +1,5 @@
 use super::chunk_util::Base64Chunks;
-use super::image_util::{blend_transparency, encode_png, scale_frame};
+use super::image_util::{blend_transparency, encode_png};
 use crate::backend::{Backend, RenderOptions, RenderedFrame};
 use crate::config::BackendKind;
 use crate::error::Result;
@@ -14,41 +14,33 @@ pub struct ITerm2Backend;
 impl ITerm2Backend {
     fn build_chunks(&self, data: &[u8], width_cells: u32, height_cells: u32) -> Vec<String> {
         let chunks = Base64Chunks::new(data, BASE64_CHUNK);
-        let total = chunks.len();
-        let mut lines = Vec::with_capacity(total.max(1));
-        let avg_chunk = super::chunk_util::average_chunk_len(&chunks);
-        let in_tmux = tmux::in_multiplexer();
-
-        for (idx, chunk) in (&chunks).into_iter().enumerate() {
-            let more = idx + 1 < total;
-
-            let mut line = String::with_capacity(24 + avg_chunk);
-            line.push_str("\x1b]1337;File=");
-            if idx == 0 {
-                line.push_str(&format!(
-                    "inline=1;size={};width={};height={};preserveAspectRatio=1",
-                    data.len(),
-                    width_cells.max(1),
-                    height_cells.max(1)
-                ));
-            } else {
-                line.push_str("inline=1");
+        let arguments = format!(
+            "inline=1;size={};width={};height={};preserveAspectRatio=1",
+            data.len(),
+            width_cells.max(1),
+            height_cells.max(1)
+        );
+        // A File command contains an entire file. Kitty's m=1 continuation flag
+        // is not part of OSC 1337. Use iTerm2 3.5's documented multipart framing
+        // only when a single sequence would exceed the 1 MiB transport limit.
+        let mut lines = if chunks.encoded_len() + arguments.len() + 32 <= 1024 * 1024 {
+            let mut command = format!("\x1b]1337;File={arguments}:");
+            for chunk in &chunks {
+                command.push_str(chunk);
             }
-
-            if more {
-                line.push_str(";m=1");
+            command.push('\x07');
+            vec![command]
+        } else {
+            let mut commands = Vec::with_capacity(chunks.len() + 2);
+            commands.push(format!("\x1b]1337;MultipartFile={arguments}\x07"));
+            for chunk in &chunks {
+                commands.push(format!("\x1b]1337;FilePart={chunk}\x07"));
             }
-
-            line.push(':');
-            line.push_str(chunk);
-            line.push('\x07');
-
-            // Wrap in tmux DCS passthrough if needed
-            if in_tmux {
-                line = tmux::wrap_for_tmux(&line);
-            }
-
-            lines.push(line);
+            commands.push("\x1b]1337;FileEnd\x07".into());
+            commands
+        };
+        for line in &mut lines {
+            *line = tmux::wrap_if_needed(line);
         }
 
         lines
@@ -69,11 +61,15 @@ impl Backend for ITerm2Backend {
         // Just calculate cell allocation based on aspect ratio
         let pixels = &frame.pixels;
 
-        let max_width_cells = options.sizing.width_cells
+        let max_width_cells = options
+            .sizing
+            .width_cells
             .unwrap_or(options.terminal.columns as u32)
             .min(options.terminal.columns as u32);
 
-        let max_height_cells = options.sizing.height_cells
+        let max_height_cells = options
+            .sizing
+            .height_cells
             .unwrap_or(options.terminal.rows as u32)
             .min(options.terminal.rows as u32);
 
@@ -81,27 +77,35 @@ impl Backend for ITerm2Backend {
         let cell_aspect = 0.5;
         let img_aspect = pixels.width() as f64 / pixels.height() as f64;
 
-        let (width_cells, height_cells) = if options.sizing.width_cells.is_some() && options.sizing.height_cells.is_some() {
-            (max_width_cells, max_height_cells)
-        } else {
-            let width_if_height_limited = (max_height_cells as f64 * img_aspect / cell_aspect) as u32;
-            let height_if_width_limited = (max_width_cells as f64 * cell_aspect / img_aspect) as u32;
-
-            if width_if_height_limited <= max_width_cells {
-                (width_if_height_limited.max(1), max_height_cells)
+        let (width_cells, height_cells) =
+            if options.sizing.width_cells.is_some() && options.sizing.height_cells.is_some() {
+                (max_width_cells, max_height_cells)
             } else {
-                (max_width_cells, height_if_width_limited.max(1))
-            }
-        };
+                let width_if_height_limited =
+                    (max_height_cells as f64 * img_aspect / cell_aspect) as u32;
+                let height_if_width_limited =
+                    (max_width_cells as f64 * cell_aspect / img_aspect) as u32;
+
+                if width_if_height_limited <= max_width_cells {
+                    (width_if_height_limited.max(1), max_height_cells)
+                } else {
+                    (max_width_cells, height_if_width_limited.max(1))
+                }
+            };
 
         let mut image = pixels.clone();
         blend_transparency(&mut image, options.background);
-        let png = encode_png(&image, "iterm2")?;
+        let png = encode_png(&image, "iterm2", options.compress_level)?;
         let lines = self.build_chunks(&png, width_cells, height_cells);
 
         if options.verbose {
-            eprintln!("  [iTerm2] Rendering {}x{} pixels in {}x{} cells",
-                     image.width(), image.height(), width_cells, height_cells);
+            eprintln!(
+                "  [iTerm2] Rendering {}x{} pixels in {}x{} cells",
+                image.width(),
+                image.height(),
+                width_cells,
+                height_cells
+            );
         }
 
         Ok(RenderedFrame {
@@ -159,7 +163,7 @@ mod tests {
         assert_eq!(rendered.lines.len(), 1);
         assert!(rendered.lines[0].starts_with("\x1b]1337;File="));
         assert!(rendered.lines[0].ends_with('\x07'));
-        assert_eq!(rendered.width_cells, 1);
+        assert_eq!(rendered.width_cells, 48);
         assert_eq!(rendered.height_cells, 0);
     }
 }

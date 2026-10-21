@@ -1,15 +1,24 @@
+use showme::{BackendKind, PixelationMode, RotationMode};
 use std::str::FromStr;
-use timg_rust::{BackendKind, PixelationMode, RotationMode};
 
 #[test]
 fn test_backend_kind_from_str() {
     assert_eq!(BackendKind::from_str("auto").unwrap(), BackendKind::Auto);
-    assert_eq!(BackendKind::from_str("unicode").unwrap(), BackendKind::Unicode);
+    assert_eq!(
+        BackendKind::from_str("unicode").unwrap(),
+        BackendKind::Unicode
+    );
     assert_eq!(BackendKind::from_str("kitty").unwrap(), BackendKind::Kitty);
-    assert_eq!(BackendKind::from_str("iterm2").unwrap(), BackendKind::Iterm2);
+    assert_eq!(
+        BackendKind::from_str("iterm2").unwrap(),
+        BackendKind::Iterm2
+    );
 
     // Case insensitive
-    assert_eq!(BackendKind::from_str("UNICODE").unwrap(), BackendKind::Unicode);
+    assert_eq!(
+        BackendKind::from_str("UNICODE").unwrap(),
+        BackendKind::Unicode
+    );
     assert_eq!(BackendKind::from_str("Auto").unwrap(), BackendKind::Auto);
 
     // Invalid
@@ -18,9 +27,15 @@ fn test_backend_kind_from_str() {
 
 #[test]
 fn test_pixelation_mode_shortcuts() {
-    assert_eq!(PixelationMode::from_str("q").unwrap(), PixelationMode::Quarter);
+    assert_eq!(
+        PixelationMode::from_str("q").unwrap(),
+        PixelationMode::Quarter
+    );
     assert_eq!(PixelationMode::from_str("h").unwrap(), PixelationMode::Half);
-    assert_eq!(PixelationMode::from_str("Q").unwrap(), PixelationMode::Quarter);
+    assert_eq!(
+        PixelationMode::from_str("Q").unwrap(),
+        PixelationMode::Quarter
+    );
     assert_eq!(PixelationMode::from_str("H").unwrap(), PixelationMode::Half);
 }
 

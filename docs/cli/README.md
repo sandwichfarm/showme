@@ -30,7 +30,7 @@ The viewer supports additional formats and backends that can be compiled in or o
 | `qoi` (default) | QOI image format support. | none. |
 | `pdf` (default) | PDF rendering support. | none. |
 | `svg` (default) | SVG/SVGZ rendering support. | none. |
-| `sixel` (opt-in) | Streams sixel data via `libsixel`. | Requires `libsixel` headers and library. |
+| `sixel` (opt-in) | Streams sixel data via `libsixel`. | Builds bundled static libsixel; requires Autotools and a C compiler. |
 
 Disable features with `--no-default-features`, e.g.:
 ```bash
@@ -46,7 +46,7 @@ showme [OPTIONS] <PATH>...
 - At least one input path is required.
 - Supported formats: PNG, JPEG, GIF, BMP, WebP, TIFF, EXR, TGA, DDS, HDR, ICO, PNM, QOI, PDF, SVG, SVGZ, and video formats (MP4, MKV, MOV, AVI, WebM, etc.)
 - Standard output must be attached to a TTY by default (override with `-o`).
-- When `--backend auto` (the default) is used, the viewer inspects environment variables to pick the best backend.
+- When `--backend auto` is used, terminal output uses environment detection and file output uses Unicode with 80×24 fallback geometry. Explicit size options override it.
 
 ## 3. Option reference
 
@@ -120,7 +120,7 @@ showme [OPTIONS] <PATH>...
 | Flag | Description |
 |------|-------------|
 | `-o, --output <FILE>` | Write to file instead of stdout. |
-| `--threads <N>` | Number of threads for parallel loading. |
+| `--threads <N>` | Rayon worker count available to image decoders; inputs load sequentially. |
 | `--compress <LEVEL>` | PNG compression level (0-9, default 1). |
 | `-I, --force-image` | Force image interpretation (disable video). |
 
@@ -299,7 +299,7 @@ showme -f photos.txt
 
 Scroll through panorama:
 ```bash
-showme --scroll --delta-move 5,2 large-panorama.jpg
+showme --scroll --delta-move 5:2 large-panorama.jpg
 ```
 
 ### Output to file

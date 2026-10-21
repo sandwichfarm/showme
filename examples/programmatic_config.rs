@@ -1,14 +1,13 @@
+use showme::config::{BackgroundColor, PixelationMode, RotationMode};
+use showme::{BackendKind, Config, RenderSizing, Renderer};
 /// Programmatic configuration example
 ///
 /// This example demonstrates how to build complex configurations
 /// programmatically without using CLI parsing.
 ///
 /// Usage: cargo run --example programmatic_config <image-path>
-
 use std::path::PathBuf;
 use std::time::Duration;
-use showme::{Config, Renderer, BackendKind, RenderSizing};
-use showme::config::{PixelationMode, RotationMode, BackgroundColor};
 
 fn main() -> showme::Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -90,7 +89,8 @@ fn main() -> showme::Result<()> {
 
     println!("Configuration:");
     println!("  Backend: {:?}", config.backend);
-    println!("  Size: {}x{}",
+    println!(
+        "  Size: {}x{}",
         config.sizing.width_cells.unwrap_or(0),
         config.sizing.height_cells.unwrap_or(0)
     );

@@ -1,14 +1,16 @@
 use std::io::{self, Write};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::thread;
-use std::time::Duration;
-
-use rayon::prelude::*;
+use std::time::{Duration, Instant};
 
 use crate::backend::{Backend, BackendFactory, BackgroundStyle, RenderOptions};
 use crate::capabilities::{current_terminal_size, detect_terminal_backend, ensure_tty_stdout};
 use crate::config::{BackendKind, BackgroundColor, Config};
 use crate::error::{Result, RimgError};
-use crate::image::{Frame, ImageSequence, load_image};
+use crate::image::{Frame, ImageSequence, load_configured_image};
 use crate::tmux;
 
 pub struct Renderer {
@@ -16,16 +18,40 @@ pub struct Renderer {
     backend: Box<dyn Backend + Send + Sync>,
     terminal: crate::capabilities::TerminalSize,
     background: BackgroundStyle,
+    clock: Box<dyn Clock>,
+    pool: Option<rayon::ThreadPool>,
+    cancelled: Arc<AtomicBool>,
 }
 
 impl Renderer {
     pub fn build(config: Config) -> Result<Self> {
-        ensure_tty_stdout()?;
-
-        let terminal = current_terminal_size();
+        let file_output = config.output_file.is_some();
+        if !file_output {
+            ensure_tty_stdout()?;
+        }
+        // File output has deterministic geometry and never probes an unrelated terminal.
+        let terminal = if file_output {
+            crate::capabilities::TerminalSize {
+                columns: config
+                    .sizing
+                    .width_cells
+                    .unwrap_or(80)
+                    .clamp(1, u16::MAX as u32) as u16,
+                rows: config
+                    .sizing
+                    .height_cells
+                    .unwrap_or(24)
+                    .clamp(1, u16::MAX as u32) as u16,
+                width_pixels: None,
+                height_pixels: None,
+            }
+        } else {
+            current_terminal_size()
+        };
         let guess = detect_terminal_backend();
 
         let backend_kind = match config.backend {
+            BackendKind::Auto if file_output => BackendKind::Unicode,
             BackendKind::Auto => guess.backend,
             other => other,
         };
@@ -33,6 +59,9 @@ impl Renderer {
         let backend = match BackendFactory::build(backend_kind) {
             Ok(backend) => backend,
             Err(err) => {
+                if config.backend != BackendKind::Auto {
+                    return Err(err);
+                }
                 if !matches!(backend_kind, BackendKind::Unicode) && !config.quiet {
                     eprintln!("warning: {} (falling back to unicode renderer)", err);
                 }
@@ -41,10 +70,13 @@ impl Renderer {
         };
 
         // Enable tmux passthrough if using graphics protocols in tmux
-        if matches!(backend_kind, BackendKind::Kitty | BackendKind::Iterm2) && tmux::in_tmux() {
-            if tmux::enable_tmux_passthrough() && !config.quiet {
-                eprintln!("Enabled tmux passthrough for graphics protocol");
-            }
+        if !file_output
+            && matches!(backend_kind, BackendKind::Kitty | BackendKind::Iterm2)
+            && tmux::in_tmux()
+            && tmux::enable_tmux_passthrough()
+            && !config.quiet
+        {
+            eprintln!("Enabled tmux passthrough for graphics protocol");
         }
 
         let background = background_style(&config);
@@ -54,7 +86,11 @@ impl Renderer {
             eprintln!("Terminal information:");
             eprintln!("  Size: {}x{} cells", terminal.columns, terminal.rows);
             if let Some(w) = terminal.width_pixels {
-                eprintln!("  Pixel size: {}x{}", w, terminal.height_pixels.unwrap_or(0));
+                eprintln!(
+                    "  Pixel size: {}x{}",
+                    w,
+                    terminal.height_pixels.unwrap_or(0)
+                );
                 if let Some(ratio) = terminal.cell_aspect_ratio() {
                     eprintln!("  Cell aspect ratio: {:.3}", ratio);
                 }
@@ -83,83 +119,126 @@ impl Renderer {
             eprintln!();
         }
 
+        let pool = config
+            .threads
+            .map(|threads| {
+                rayon::ThreadPoolBuilder::new()
+                    .num_threads(threads)
+                    .build()
+                    .map_err(|err| RimgError::other(format!("failed to create thread pool: {err}")))
+            })
+            .transpose()?;
+
         Ok(Self {
             config,
             backend,
             terminal,
             background,
+            clock: Box::new(SystemClock(Instant::now())),
+            pool,
+            cancelled: Arc::new(AtomicBool::new(false)),
         })
     }
 
-    pub fn run(&self) -> Result<()> {
-        let _alternate_guard = if self.config.alternate_screen {
-            Some(AlternateScreenGuard::enter()?)
-        } else {
-            None
-        };
+    /// Supply a flag checked between frames and during playback delays.
+    /// Cancellation restores terminal state and returns an interrupted I/O error.
+    pub fn with_cancellation(mut self, cancelled: Arc<AtomicBool>) -> Self {
+        self.cancelled = cancelled;
+        self
+    }
 
-        let sequences = self.load_sequences()?;
-        if sequences.is_empty() {
+    fn check_cancelled(&self) -> Result<()> {
+        if self.cancelled.load(Ordering::Relaxed) {
+            Err(io::Error::from(io::ErrorKind::Interrupted).into())
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn run(&self) -> Result<()> {
+        if let Some(path) = &self.config.output_file {
+            let mut file = std::fs::File::create(path).map_err(|err| {
+                RimgError::other(format!(
+                    "failed to create output file '{}': {}",
+                    path.display(),
+                    err
+                ))
+            })?;
+            self.run_to(&mut file, false)
+        } else {
+            self.run_to(&mut io::stdout().lock(), true)
+        }
+    }
+
+    fn run_to(&self, output: &mut dyn Write, terminal_controls: bool) -> Result<()> {
+        let mut session = TerminalSession::new(output);
+        if terminal_controls {
+            session.enter(self.config.alternate_screen, self.config.hide_cursor)?;
+        }
+        self.run_contents(&mut session)?;
+        self.check_cancelled()
+    }
+
+    fn run_contents(&self, output: &mut dyn Write) -> Result<()> {
+        self.check_cancelled()?;
+        if self.config.inputs.is_empty() {
             return Err(RimgError::MissingInput);
         }
-
-        // Open output file if specified, otherwise use stdout
-        let mut file_output;
-        let mut stdout_output;
-        let output: &mut dyn Write = if let Some(ref path) = self.config.output_file {
-            file_output = std::fs::File::create(path).map_err(|err| {
-                RimgError::other(format!("failed to create output file '{}': {}", path.display(), err))
-            })?;
-            &mut file_output
-        } else {
-            stdout_output = io::stdout();
-            &mut stdout_output
-        };
-
-        // Hide cursor unless explicitly told not to
-        let _cursor_guard = if !self.config.hide_cursor {
-            None
-        } else {
-            Some(CursorHideGuard::hide()?)
-        };
+        if self.config.max_frames == Some(0)
+            || self.config.loops == Some(0)
+            || self.config.max_duration == Some(Duration::ZERO)
+        {
+            return Ok(());
+        }
 
         if self.config.clear_once {
             output.write_all(b"\x1b[2J\x1b[H")?;
         }
 
         if let Some(grid) = &self.config.grid {
-            self.render_grid(grid, &sequences, output)?;
+            self.render_grid(
+                grid,
+                self.config
+                    .inputs
+                    .iter()
+                    .map(|path| self.load_sequence(path)),
+                output,
+            )?;
         } else {
-            for (idx, sequence) in sequences.iter().enumerate() {
+            for (idx, path) in self.config.inputs.iter().enumerate() {
+                // Decode and render one input at a time so the first frame does not
+                // wait for the entire input list or retain unrelated media.
+                let sequence = self.load_sequence(path)?;
                 if self.config.clear_between && (idx > 0 || !self.config.clear_once) {
                     output.write_all(b"\x1b[2J\x1b[H")?;
                 }
 
                 if !self.config.quiet {
-                    if let Some(title) = self.make_title(idx, sequence) {
+                    if let Some(title) = self.make_title(idx, &sequence) {
                         writeln!(output, "{title}")?;
                     } else {
                         writeln!(output, "# {} - {}", idx + 1, sequence.path.display())?;
                     }
                 }
 
-                if self.config.verbose {
-                    if let Some(frame) = sequence.first_frame() {
-                        eprintln!("  Image {}: {}x{} pixels, {} frames",
-                            idx + 1,
-                            frame.pixels.width(),
-                            frame.pixels.height(),
-                            sequence.frames.len()
-                        );
-                    }
+                if self.config.verbose
+                    && let Some(frame) = sequence.first_frame()
+                {
+                    eprintln!(
+                        "  Image {}: {}x{} pixels, {} frames",
+                        idx + 1,
+                        frame.pixels.width(),
+                        frame.pixels.height(),
+                        sequence.frames.len()
+                    );
                 }
 
-                self.render_sequence(sequence, output)?;
+                self.render_sequence(&sequence, output)?;
 
-                if let Some(wait) = self.config.wait_between_images {
-                    if idx + 1 < sequences.len() {
-                        thread::sleep(wait);
-                    }
+                if let Some(wait) = self.config.wait_between_images
+                    && idx + 1 < self.config.inputs.len()
+                {
+                    self.sleep_interruptible(wait);
                 }
             }
         }
@@ -168,49 +247,25 @@ impl Renderer {
         Ok(())
     }
 
-    fn load_sequences(&self) -> Result<Vec<ImageSequence>> {
-        let start = std::time::Instant::now();
-        let rotation_mode = self.config.rotation;
-        let auto_crop = self.config.auto_crop;
-        let crop_border = self.config.crop_border;
-
-        // Configure thread pool if specified
-        let sequences: Result<Vec<ImageSequence>> = if let Some(num_threads) = self.config.threads {
-            rayon::ThreadPoolBuilder::new()
-                .num_threads(num_threads)
-                .build()
-                .map_err(|e| RimgError::other(format!("failed to create thread pool: {}", e)))?
-                .install(|| {
-                    self.config
-                        .inputs
-                        .par_iter()
-                        .map(|path| load_image(path, rotation_mode, auto_crop, crop_border))
-                        .collect()
-                })
+    fn load_sequence(&self, path: &std::path::Path) -> Result<ImageSequence> {
+        self.check_cancelled()?;
+        let start = Instant::now();
+        let load = || load_configured_image(path, &self.config, Some(Arc::clone(&self.cancelled)));
+        let sequence = if let Some(pool) = &self.pool {
+            pool.install(load)
         } else {
-            self.config
-                .inputs
-                .par_iter()
-                .map(|path| load_image(path, rotation_mode, auto_crop, crop_border))
-                .collect()
-        };
-
-        let sequences = sequences?;
-
+            load()
+        }?;
+        self.check_cancelled()?;
         if self.config.verbose {
-            let elapsed = start.elapsed();
-            let total_frames: usize = sequences.iter().map(|s| s.frames.len()).sum();
-            eprintln!("Loading statistics:");
-            eprintln!("  Images loaded: {}", sequences.len());
-            eprintln!("  Total frames: {}", total_frames);
-            eprintln!("  Load time: {:.2}s", elapsed.as_secs_f64());
-            if sequences.len() > 0 {
-                eprintln!("  Average: {:.0}ms per image", elapsed.as_millis() as f64 / sequences.len() as f64);
-            }
-            eprintln!();
+            eprintln!(
+                "Loaded '{}': {} frames in {:.3}s",
+                path.display(),
+                sequence.frames.len(),
+                start.elapsed().as_secs_f64()
+            );
         }
-
-        Ok(sequences)
+        Ok(sequence)
     }
 
     fn render_sequence(&self, sequence: &ImageSequence, stdout: &mut dyn Write) -> Result<()> {
@@ -224,13 +279,22 @@ impl Renderer {
             verbose: self.config.verbose,
         };
 
+        // Zero limits mean no output, including single-frame images and scrolling.
+        if self.config.max_frames == Some(0)
+            || self.config.loops == Some(0)
+            || self.config.max_duration == Some(Duration::ZERO)
+            || self.config.frame_offset >= sequence.frames.len()
+        {
+            return Ok(());
+        }
+
         // Handle scrolling animation mode
         if self.config.scroll_animation {
             return self.render_scrolling(sequence, options, stdout);
         }
 
         // Apply frame offset and limit
-        let start_frame = self.config.frame_offset.min(sequence.frames.len().saturating_sub(1));
+        let start_frame = self.config.frame_offset;
         let available_frames = &sequence.frames[start_frame..];
 
         let frames_to_render = if let Some(max) = self.config.max_frames {
@@ -252,33 +316,29 @@ impl Renderer {
         // Determine loop behavior
         let loop_count = if self.config.loop_forever {
             -1i32 // Infinite
-        } else if let Some(loops) = self.config.loops {
-            loops
         } else {
-            1 // Default: play once
+            self.config.loops.unwrap_or(1)
         };
 
         let mut first = true;
         let mut last_height = 0u32;
         let mut current_loop = 0i32;
-        let start_time = std::time::Instant::now();
-        let mut _total_frames_rendered = 0usize; // Reserved for future verbose output
+        let start_time = self.clock.now();
 
         loop {
             for frame in frames_to_render {
+                self.check_cancelled()?;
                 // Check duration limit
-                if let Some(max_duration) = self.config.max_duration {
-                    if start_time.elapsed() >= max_duration {
-                        return Ok(());
-                    }
+                if let Some(max_duration) = self.config.max_duration
+                    && self.clock.now().saturating_sub(start_time) >= max_duration
+                {
+                    return Ok(());
                 }
 
                 let rendered = self.backend.render(frame, options)?;
 
-                if !first {
-                    if last_height > 0 {
-                        write!(stdout, "\x1b[{}A", last_height)?;
-                    }
+                if !first && last_height > 0 {
+                    write!(stdout, "\x1b[{}A", last_height)?;
                 }
 
                 let indent = self.indent_for(&rendered);
@@ -287,11 +347,7 @@ impl Renderer {
 
                 last_height = rendered.height_cells;
                 first = false;
-                _total_frames_rendered += 1;
-
-                if frame.delay > Duration::ZERO {
-                    thread::sleep(frame.delay);
-                }
+                self.pause(frame.delay, start_time);
             }
 
             current_loop += 1;
@@ -319,9 +375,10 @@ impl Renderer {
         }
 
         // Use the first frame for scrolling
-        let frame = sequence.first_frame().ok_or_else(|| {
-            RimgError::other("cannot scroll: image has no frames")
-        })?;
+        let frame = sequence
+            .frames
+            .get(self.config.frame_offset)
+            .ok_or_else(|| RimgError::other("cannot scroll: image has no frames"))?;
 
         // Render the full image
         let rendered = self.backend.render(frame, options)?;
@@ -330,8 +387,14 @@ impl Renderer {
             return Ok(());
         }
 
+        let rendered_cells: Vec<Vec<String>> = rendered
+            .lines
+            .iter()
+            .map(|line| split_rendered_line_into_cells(line))
+            .collect();
+
         let image_width = rendered.width_cells as i32;
-        let image_height = rendered.lines.len() as i32;
+        let image_height = rendered_cells.len() as i32;
         let viewport_width = self.terminal.columns as i32;
         let viewport_height = self.terminal.rows as i32;
 
@@ -350,16 +413,23 @@ impl Renderer {
         let dy = self.config.scroll_dy;
 
         // Generate scroll positions
-        let mut x = 0i32;
-        let mut y = 0i32;
+        let mut x = if dx < 0 { scroll_x_range } else { 0 };
+        let mut y = if dy < 0 { scroll_y_range } else { 0 };
         let mut positions = Vec::new();
 
         // Scroll until we reach the end
         loop {
             positions.push((x, y));
 
-            let next_x = (x + dx).clamp(0, scroll_x_range);
-            let next_y = (y + dy).clamp(0, scroll_y_range);
+            if self
+                .config
+                .max_frames
+                .is_some_and(|limit| positions.len() >= limit)
+            {
+                break;
+            }
+            let next_x = x.saturating_add(dx).clamp(0, scroll_x_range);
+            let next_y = y.saturating_add(dy).clamp(0, scroll_y_range);
 
             // Stop if we can't move further
             if next_x == x && next_y == y {
@@ -377,18 +447,25 @@ impl Renderer {
         // Determine loop behavior
         let loop_count = if self.config.loop_forever {
             -1i32 // Infinite
-        } else if let Some(loops) = self.config.loops {
-            loops
         } else {
-            1 // Default: play once
+            self.config.loops.unwrap_or(1)
         };
 
         // Animate the scroll
         let mut first = true;
         let mut current_loop = 0i32;
+        let start_time = self.clock.now();
 
         loop {
             for (scroll_x, scroll_y) in &positions {
+                self.check_cancelled()?;
+                if self
+                    .config
+                    .max_duration
+                    .is_some_and(|limit| self.clock.now().saturating_sub(start_time) >= limit)
+                {
+                    return Ok(());
+                }
                 if !first {
                     // Move cursor back to start
                     if viewport_height > 0 {
@@ -397,20 +474,23 @@ impl Renderer {
                 }
 
                 // Extract viewport from rendered image
-                let viewport_lines: Vec<&str> = rendered
-                    .lines
-                    .iter()
-                    .skip(*scroll_y as usize)
-                    .take(viewport_height as usize)
-                    .map(|line| {
-                        let start = (*scroll_x as usize).min(line.len());
-                        let end = (start + viewport_width as usize).min(line.len());
-                        &line[start..end]
-                    })
-                    .collect();
+                let start_x = (*scroll_x).max(0) as usize;
+                let end_x = start_x.saturating_add(viewport_width.max(0) as usize);
+                let start_y = (*scroll_y).max(0) as usize;
+                let end_y = start_y.saturating_add(viewport_height.max(0) as usize);
 
-                // Write viewport
-                for line in viewport_lines {
+                for row in rendered_cells
+                    .iter()
+                    .skip(start_y)
+                    .take(end_y.saturating_sub(start_y))
+                {
+                    let mut line = String::from("\x1b[0m");
+                    let start = start_x.min(row.len());
+                    let end = end_x.min(row.len());
+                    for cell in &row[start..end] {
+                        line.push_str(cell);
+                    }
+                    line.push_str("\x1b[0m");
                     stdout.write_all(line.as_bytes())?;
                     stdout.write_all(b"\n")?;
                 }
@@ -419,9 +499,7 @@ impl Renderer {
                 first = false;
 
                 // Delay between scroll steps
-                if self.config.scroll_delay > Duration::ZERO {
-                    thread::sleep(self.config.scroll_delay);
-                }
+                self.pause(self.config.scroll_delay, start_time);
             }
 
             current_loop += 1;
@@ -435,6 +513,25 @@ impl Renderer {
         Ok(())
     }
 
+    fn pause(&self, delay: Duration, start: Duration) {
+        let delay = if let Some(limit) = self.config.max_duration {
+            delay.min(limit.saturating_sub(self.clock.now().saturating_sub(start)))
+        } else {
+            delay
+        };
+        self.sleep_interruptible(delay);
+    }
+
+    fn sleep_interruptible(&self, duration: Duration) {
+        let end = self.clock.now().saturating_add(duration);
+        while !self.cancelled.load(Ordering::Relaxed) && self.clock.now() < end {
+            self.clock.sleep(
+                end.saturating_sub(self.clock.now())
+                    .min(Duration::from_millis(25)),
+            );
+        }
+    }
+
     fn print_frame(
         &self,
         frame: &Frame,
@@ -443,9 +540,9 @@ impl Renderer {
     ) -> Result<()> {
         let rendered = self.backend.render(frame, options)?;
         let indent = self.indent_for(&rendered);
-        let res = self.write_rendered(&rendered, indent, stdout)?;
+        self.write_rendered(&rendered, indent, stdout)?;
         stdout.flush()?;
-        Ok(res)
+        Ok(())
     }
 
     fn write_rendered(
@@ -460,6 +557,18 @@ impl Renderer {
             None
         };
 
+        if self.backend.supported_kind() != BackendKind::Unicode {
+            if let Some(pad) = &padding {
+                stdout.write_all(pad.as_bytes())?;
+            }
+            // Continuations are adjacent control sequences, not terminal rows.
+            for sequence in &rendered.lines {
+                stdout.write_all(sequence.as_bytes())?;
+            }
+            stdout.write_all(b"\n")?;
+            return Ok(());
+        }
+
         for line in &rendered.lines {
             if let Some(pad) = &padding {
                 stdout.write_all(pad.as_bytes())?;
@@ -470,10 +579,10 @@ impl Renderer {
         Ok(())
     }
 
-    fn render_grid(
+    fn render_grid<I: ExactSizeIterator<Item = Result<ImageSequence>>>(
         &self,
         grid: &crate::config::GridOptions,
-        sequences: &[ImageSequence],
+        mut sequences: I,
         stdout: &mut dyn Write,
     ) -> Result<()> {
         if self.backend.supported_kind() != BackendKind::Unicode {
@@ -490,12 +599,9 @@ impl Renderer {
         let max_rows = grid.rows.map(|r| r.get()).unwrap_or(usize::MAX);
         let gap = " ".repeat(grid.spacing as usize);
 
-        for (row_index, chunk) in sequences.chunks(columns).into_iter().enumerate() {
-            if row_index >= max_rows {
-                break;
-            }
-
-            let effective_columns = chunk.len();
+        let mut row_index = 0;
+        while sequences.len() > 0 && row_index < max_rows {
+            let effective_columns = sequences.len().min(columns);
 
             // Use actual terminal width for grid allocation
             let available_cells = self.terminal.columns as usize;
@@ -504,31 +610,35 @@ impl Renderer {
             let per_column =
                 available_cells.saturating_sub(reserved_for_gaps).max(1) / effective_columns.max(1);
 
-            let rendered: Vec<_> = chunk
-                .iter()
+            let rendered: Vec<_> = sequences
+                .by_ref()
+                .take(columns)
                 .map(|sequence| {
-                    sequence
-                        .frames
-                        .first()
-                        .ok_or_else(|| RimgError::other("image without frames"))
-                        .and_then(|frame| {
-                            let mut sizing = self.config.sizing;
-                            let width_override = sizing
-                                .width_cells
-                                .map(|limit| limit.min(per_column as u32))
-                                .unwrap_or(per_column as u32);
-                            sizing.width_cells = Some(width_override);
-                            let options = RenderOptions {
-                                sizing,
-                                terminal: self.terminal,
-                                background: self.background,
-                                pixelation: self.config.pixelation,
-                                use_8bit_color: self.config.use_8bit_color,
-                                compress_level: self.config.compress_level,
-                                verbose: self.config.verbose,
-                            };
-                            self.backend.render(frame, options)
-                        })
+                    let sequence = sequence?;
+                    let Some(frame) = sequence.frames.get(self.config.frame_offset) else {
+                        return Ok(crate::backend::RenderedFrame {
+                            lines: Vec::new(),
+                            width_cells: 0,
+                            height_cells: 0,
+                            delay: Duration::ZERO,
+                        });
+                    };
+                    let mut sizing = self.config.sizing;
+                    let width_override = sizing
+                        .width_cells
+                        .map(|limit| limit.min(per_column as u32))
+                        .unwrap_or(per_column as u32);
+                    sizing.width_cells = Some(width_override);
+                    let options = RenderOptions {
+                        sizing,
+                        terminal: self.terminal,
+                        background: self.background,
+                        pixelation: self.config.pixelation,
+                        use_8bit_color: self.config.use_8bit_color,
+                        compress_level: self.config.compress_level,
+                        verbose: self.config.verbose,
+                    };
+                    self.backend.render(frame, options)
                 })
                 .collect::<Result<Vec<_>>>()?;
 
@@ -537,6 +647,11 @@ impl Renderer {
                 .map(|frame| frame.lines.len())
                 .max()
                 .unwrap_or(0);
+
+            if max_lines == 0 {
+                row_index += 1;
+                continue;
+            }
 
             for line_idx in 0..max_lines {
                 for (col_idx, frame) in rendered.iter().enumerate() {
@@ -560,12 +675,13 @@ impl Renderer {
 
             stdout.write_all(b"\n")?;
 
-            if let Some(wait) = self.config.wait_between_rows {
-                let more_rows_available =
-                    (row_index + 1) < max_rows && (row_index + 1) * columns < sequences.len();
-                if more_rows_available {
-                    thread::sleep(wait);
-                }
+            stdout.flush()?;
+            row_index += 1;
+            if let Some(wait) = self.config.wait_between_rows
+                && row_index < max_rows
+                && sequences.len() > 0
+            {
+                self.sleep_interruptible(wait);
             }
         }
 
@@ -624,6 +740,48 @@ impl Renderer {
     }
 }
 
+fn split_rendered_line_into_cells(line: &str) -> Vec<String> {
+    let mut cells = Vec::new();
+    let mut esc = String::new();
+
+    let bytes = line.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'\x1b' {
+            let start = i;
+            if i + 1 < bytes.len() && bytes[i + 1] == b'[' {
+                i += 2;
+                while i < bytes.len() {
+                    let b = bytes[i];
+                    i += 1;
+                    if (0x40..=0x7e).contains(&b) {
+                        break;
+                    }
+                }
+                esc.push_str(&line[start..i]);
+                continue;
+            }
+
+            esc.push('\x1b');
+            i += 1;
+            continue;
+        }
+
+        let ch = line[i..].chars().next().unwrap();
+        i += ch.len_utf8();
+
+        let mut cell = String::new();
+        if !esc.is_empty() {
+            cell.push_str(&esc);
+        }
+        cell.push(ch);
+        cells.push(cell);
+        esc.clear();
+    }
+
+    cells
+}
+
 fn background_style(config: &Config) -> BackgroundStyle {
     let color = match config.background {
         BackgroundColor::Color(rgb) => Some(rgb),
@@ -637,40 +795,332 @@ fn background_style(config: &Config) -> BackgroundStyle {
     }
 }
 
-struct AlternateScreenGuard;
+trait Clock: Send + Sync {
+    fn now(&self) -> Duration;
+    fn sleep(&self, duration: Duration);
+}
 
-impl AlternateScreenGuard {
-    fn enter() -> Result<Self> {
-        let mut stdout = io::stdout();
-        stdout.write_all(b"\x1b[?1049h")?;
-        stdout.flush()?;
-        Ok(Self)
+struct SystemClock(Instant);
+
+impl Clock for SystemClock {
+    fn now(&self) -> Duration {
+        self.0.elapsed()
+    }
+    fn sleep(&self, duration: Duration) {
+        thread::sleep(duration);
     }
 }
 
-impl Drop for AlternateScreenGuard {
+// Own the destination borrow so initialization failures and ordinary errors use
+// the same cleanup path as successful rendering.
+struct TerminalSession<'a> {
+    output: &'a mut dyn Write,
+    alternate: bool,
+    hidden: bool,
+}
+
+impl<'a> TerminalSession<'a> {
+    fn new(output: &'a mut dyn Write) -> Self {
+        Self {
+            output,
+            alternate: false,
+            hidden: false,
+        }
+    }
+
+    fn enter(&mut self, alternate: bool, hidden: bool) -> Result<()> {
+        if alternate {
+            self.alternate = true;
+            self.output.write_all(b"\x1b[?1049h")?;
+        }
+        if hidden {
+            self.hidden = true;
+            self.output.write_all(b"\x1b[?25l")?;
+        }
+        self.output.flush()?;
+        Ok(())
+    }
+}
+
+impl Write for TerminalSession<'_> {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        self.output.write(buffer)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.output.flush()
+    }
+}
+
+impl Drop for TerminalSession<'_> {
     fn drop(&mut self) {
-        let mut stdout = io::stdout();
-        let _ = stdout.write_all(b"\x1b[?1049l");
-        let _ = stdout.flush();
+        if self.hidden {
+            let _ = self.output.write_all(b"\x1b[?25h");
+        }
+        if self.alternate {
+            let _ = self.output.write_all(b"\x1b[?1049l");
+        }
+        if self.hidden || self.alternate {
+            let _ = self.output.flush();
+        }
     }
 }
 
-struct CursorHideGuard;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::RenderedFrame;
+    use clap::Parser;
+    use std::sync::{Arc, Mutex};
 
-impl CursorHideGuard {
-    fn hide() -> Result<Self> {
-        let mut stdout = io::stdout();
-        stdout.write_all(b"\x1b[?25l")?; // Hide cursor
-        stdout.flush()?;
-        Ok(Self)
+    #[derive(Clone, Default)]
+    struct TestClock(Arc<Mutex<Duration>>);
+    impl Clock for TestClock {
+        fn now(&self) -> Duration {
+            *self.0.lock().unwrap()
+        }
+        fn sleep(&self, duration: Duration) {
+            *self.0.lock().unwrap() += duration;
+        }
     }
-}
 
-impl Drop for CursorHideGuard {
-    fn drop(&mut self) {
-        let mut stdout = io::stdout();
-        let _ = stdout.write_all(b"\x1b[?25h"); // Show cursor
-        let _ = stdout.flush();
+    struct MarkerBackend;
+    impl Backend for MarkerBackend {
+        fn name(&self) -> &'static str {
+            "markers"
+        }
+        fn supported_kind(&self) -> BackendKind {
+            BackendKind::Unicode
+        }
+        fn render(&self, frame: &Frame, _: RenderOptions) -> Result<RenderedFrame> {
+            Ok(RenderedFrame {
+                lines: frame
+                    .pixels
+                    .rows()
+                    .map(|row| row.map(|pixel| pixel[0] as char).collect())
+                    .collect(),
+                width_cells: frame.pixels.width(),
+                height_cells: frame.pixels.height(),
+                delay: frame.delay,
+            })
+        }
+    }
+
+    fn renderer() -> Renderer {
+        let input = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/red.ppm");
+        let config = crate::Cli::try_parse_from([
+            "showme",
+            "--quiet",
+            "--width-stretch",
+            "2",
+            input.to_str().unwrap(),
+        ])
+        .unwrap()
+        .into_config()
+        .unwrap();
+        Renderer {
+            background: background_style(&config),
+            config,
+            backend: Box::new(MarkerBackend),
+            terminal: crate::capabilities::TerminalSize {
+                columns: 80,
+                rows: 24,
+                width_pixels: None,
+                height_pixels: None,
+            },
+            clock: Box::new(TestClock::default()),
+            pool: None,
+            cancelled: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    fn sequence(markers: &str, delay: Duration) -> ImageSequence {
+        ImageSequence {
+            path: "markers.ppm".into(),
+            frames: markers
+                .bytes()
+                .map(|marker| Frame {
+                    pixels: image::RgbaImage::from_pixel(1, 1, image::Rgba([marker, 0, 0, 255])),
+                    delay,
+                })
+                .collect(),
+        }
+    }
+
+    fn text(output: &[u8]) -> String {
+        let input = String::from_utf8(output.to_vec()).unwrap();
+        let mut chars = input.chars();
+        let mut plain = String::new();
+        while let Some(c) = chars.next() {
+            if c == '\x1b' {
+                assert_eq!(chars.next(), Some('['));
+                for c in chars.by_ref() {
+                    if ('@'..='~').contains(&c) {
+                        break;
+                    }
+                }
+            } else {
+                plain.push(c);
+            }
+        }
+        plain
+    }
+
+    #[test]
+    fn frame_order_offset_limit_and_finite_loops_reach_the_writer() {
+        let mut renderer = renderer();
+        renderer.config.frame_offset = 1;
+        renderer.config.max_frames = Some(2);
+        renderer.config.loops = Some(2);
+        let mut output = Vec::new();
+        renderer
+            .render_sequence(&sequence("abcd", Duration::from_millis(2)), &mut output)
+            .unwrap();
+        assert_eq!(text(&output), "b\nc\nb\nc\n");
+    }
+
+    #[test]
+    fn zero_limits_and_offsets_beyond_eof_emit_no_frames() {
+        for case in 0..5 {
+            let mut renderer = renderer();
+            match case {
+                0 => renderer.config.max_frames = Some(0),
+                1 => renderer.config.loops = Some(0),
+                2 => renderer.config.max_duration = Some(Duration::ZERO),
+                3 => renderer.config.frame_offset = 3,
+                _ => renderer.config.frame_offset = usize::MAX,
+            }
+            for scrolling in [false, true] {
+                renderer.config.scroll_animation = scrolling;
+                let mut output = Vec::new();
+                renderer
+                    .render_sequence(&sequence("abc", Duration::ZERO), &mut output)
+                    .unwrap();
+                assert!(output.is_empty());
+            }
+        }
+        renderer()
+            .render_sequence(&sequence("", Duration::ZERO), &mut Vec::new())
+            .unwrap();
+    }
+
+    #[test]
+    fn duration_limits_cap_frame_sleep_and_end_infinite_loops() {
+        let mut renderer = renderer();
+        let clock = TestClock::default();
+        renderer.clock = Box::new(clock.clone());
+        renderer.config.loop_forever = true;
+        renderer.config.max_duration = Some(Duration::from_millis(10));
+        let mut output = Vec::new();
+        renderer
+            .render_sequence(&sequence("ab", Duration::from_secs(30)), &mut output)
+            .unwrap();
+        assert_eq!(text(&output), "a\n");
+        assert_eq!(clock.now(), Duration::from_millis(10));
+    }
+
+    fn scrolling_renderer() -> (Renderer, ImageSequence) {
+        let mut renderer = renderer();
+        renderer.terminal.columns = 2;
+        renderer.terminal.rows = 1;
+        renderer.config.scroll_animation = true;
+        let mut sequence = sequence("a", Duration::ZERO);
+        sequence.frames[0].pixels =
+            image::RgbaImage::from_fn(5, 1, |x, _| image::Rgba([b'a' + x as u8, 0, 0, 255]));
+        (renderer, sequence)
+    }
+
+    #[test]
+    fn scrolling_honors_frame_limits_and_loops() {
+        let (mut renderer, sequence) = scrolling_renderer();
+        renderer.config.max_frames = Some(2);
+        renderer.config.loops = Some(2);
+        let mut output = Vec::new();
+        renderer.render_sequence(&sequence, &mut output).unwrap();
+        assert_eq!(text(&output), "ab\nbc\nab\nbc\n");
+    }
+
+    #[test]
+    fn negative_scrolling_starts_at_the_far_edge_and_does_not_overflow() {
+        let (mut renderer, sequence) = scrolling_renderer();
+        renderer.config.scroll_dx = i32::MIN;
+        let mut output = Vec::new();
+        renderer.render_sequence(&sequence, &mut output).unwrap();
+        assert_eq!(text(&output), "de\nab\n");
+    }
+
+    #[test]
+    fn scrolling_duration_caps_delay_and_stops_infinite_playback() {
+        let (mut renderer, sequence) = scrolling_renderer();
+        let clock = TestClock::default();
+        renderer.clock = Box::new(clock.clone());
+        renderer.config.loop_forever = true;
+        renderer.config.max_duration = Some(Duration::from_millis(15));
+        renderer.config.scroll_delay = Duration::from_secs(30);
+        let mut output = Vec::new();
+        renderer.render_sequence(&sequence, &mut output).unwrap();
+        assert_eq!(text(&output), "ab\n");
+        assert_eq!(clock.now(), Duration::from_millis(15));
+    }
+
+    #[test]
+    fn grid_preserves_spacing_and_row_limit() {
+        let renderer = renderer();
+        let grid = crate::config::GridOptions {
+            columns: std::num::NonZeroUsize::new(2).unwrap(),
+            spacing: 3,
+            rows: std::num::NonZeroUsize::new(1),
+        };
+        let sequences = vec![
+            sequence("a", Duration::ZERO),
+            sequence("b", Duration::ZERO),
+            sequence("c", Duration::ZERO),
+        ];
+        let mut output = Vec::new();
+        renderer
+            .render_grid(&grid, sequences.into_iter().map(Ok), &mut output)
+            .unwrap();
+        assert_eq!(text(&output), "a   b\n\n");
+    }
+
+    #[test]
+    fn ordinary_load_errors_restore_cursor_and_alternate_screen() {
+        let mut renderer = renderer();
+        renderer.config.inputs = vec!["/this-input-does-not-exist.ppm".into()];
+        renderer.config.alternate_screen = true;
+        let mut output = Vec::new();
+        assert!(renderer.run_to(&mut output, true).is_err());
+        assert_eq!(output, b"\x1b[?1049h\x1b[?25l\x1b[?25h\x1b[?1049l");
+    }
+
+    #[test]
+    fn writer_errors_propagate_and_attempt_cleanup() {
+        struct FailNewlineOnce {
+            bytes: Vec<u8>,
+            failed: bool,
+        }
+        impl Write for FailNewlineOnce {
+            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+                if bytes == b"\n" && !self.failed {
+                    self.failed = true;
+                    return Err(io::ErrorKind::BrokenPipe.into());
+                }
+                self.bytes.extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut renderer = renderer();
+        renderer.config.alternate_screen = true;
+        let mut output = FailNewlineOnce {
+            bytes: Vec::new(),
+            failed: false,
+        };
+        assert!(
+            matches!(renderer.run_to(&mut output, true), Err(RimgError::Io(err)) if err.kind() == io::ErrorKind::BrokenPipe)
+        );
+        assert!(output.failed);
+        assert!(output.bytes.ends_with(b"\x1b[?25h\x1b[?1049l"));
     }
 }

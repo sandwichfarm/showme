@@ -1,7 +1,7 @@
+use showme::capabilities::BackendConfidence;
+use showme::{BackendKind, detect_terminal_backend, detect_terminal_name, is_in_multiplexer};
 use std::env;
 use std::sync::Mutex;
-use timg_rust::{BackendKind, detect_terminal_backend, detect_terminal_name, is_in_multiplexer};
-use timg_rust::capabilities::BackendConfidence;
 
 // Mutex to serialize tests that modify environment variables
 // This prevents race conditions when tests run in parallel
@@ -164,8 +164,9 @@ fn test_detect_windows_terminal() {
     let _lock = ENV_LOCK.lock().unwrap();
     let _guard1 = EnvGuard::remove("ITERM_SESSION_ID");
     let _guard2 = EnvGuard::remove("KITTY_WINDOW_ID");
-    let _guard3 = EnvGuard::set("WT_SESSION", "abc123");
-    let _guard4 = EnvGuard::remove("TERM");
+    let _guard3 = EnvGuard::remove("TERM_PROGRAM");
+    let _guard4 = EnvGuard::set("WT_SESSION", "abc123");
+    let _guard5 = EnvGuard::remove("TERM");
 
     let guess = detect_terminal_backend();
     assert_eq!(guess.backend, BackendKind::Sixel);

@@ -1,13 +1,13 @@
 use super::chunk_util::Base64Chunks;
-use super::image_util::{blend_transparency, encode_png, scale_frame};
+use super::image_util::{blend_transparency, encode_png};
 use crate::backend::{Backend, RenderOptions, RenderedFrame};
 use crate::config::BackendKind;
 use crate::error::Result;
 use crate::image::Frame;
 use crate::tmux;
 
-// timg uses 3072 raw bytes which encodes to 4096 base64 bytes
-const BASE64_CHUNK: usize = 3072;
+// Kitty permits at most 4096 base64 bytes in each APC graphics payload.
+const BASE64_CHUNK: usize = 4096;
 
 #[derive(Debug, Default)]
 pub struct KittyBackend;
@@ -39,9 +39,9 @@ impl KittyBackend {
 
             let mut params = Vec::new();
             if idx == 0 {
-                params.push(format!("a=T"));
-                params.push(format!("f=100"));
-                params.push(format!("q=2")); // Suppress terminal feedback
+                params.push("a=T".to_string());
+                params.push("f=100".to_string());
+                params.push("q=2".to_string()); // Suppress terminal feedback
                 params.push(format!("i={}", image_id)); // Unique image ID
                 params.push(format!("s={}", pixel_width));
                 params.push(format!("v={}", pixel_height));
@@ -63,7 +63,7 @@ impl KittyBackend {
 
             // Wrap in tmux DCS passthrough if needed
             if in_tmux {
-                line = tmux::wrap_for_tmux(&line);
+                line = tmux::wrap_if_needed(&line);
             }
 
             lines.push(line);
@@ -87,11 +87,15 @@ impl Backend for KittyBackend {
         // Just calculate cell allocation based on aspect ratio
         let pixels = &frame.pixels;
 
-        let max_width_cells = options.sizing.width_cells
+        let max_width_cells = options
+            .sizing
+            .width_cells
             .unwrap_or(options.terminal.columns as u32)
             .min(options.terminal.columns as u32);
 
-        let max_height_cells = options.sizing.height_cells
+        let max_height_cells = options
+            .sizing
+            .height_cells
             .unwrap_or(options.terminal.rows as u32)
             .min(options.terminal.rows as u32);
 
@@ -100,24 +104,27 @@ impl Backend for KittyBackend {
         let cell_aspect = 0.5; // cells are twice as tall as wide
         let img_aspect = pixels.width() as f64 / pixels.height() as f64;
 
-        let (width_cells, height_cells) = if options.sizing.width_cells.is_some() && options.sizing.height_cells.is_some() {
-            // User specified both dimensions - use them directly
-            (max_width_cells, max_height_cells)
-        } else {
-            // Calculate to fit within terminal while preserving aspect ratio
-            let width_if_height_limited = (max_height_cells as f64 * img_aspect / cell_aspect) as u32;
-            let height_if_width_limited = (max_width_cells as f64 * cell_aspect / img_aspect) as u32;
-
-            if width_if_height_limited <= max_width_cells {
-                (width_if_height_limited.max(1), max_height_cells)
+        let (width_cells, height_cells) =
+            if options.sizing.width_cells.is_some() && options.sizing.height_cells.is_some() {
+                // User specified both dimensions - use them directly
+                (max_width_cells, max_height_cells)
             } else {
-                (max_width_cells, height_if_width_limited.max(1))
-            }
-        };
+                // Calculate to fit within terminal while preserving aspect ratio
+                let width_if_height_limited =
+                    (max_height_cells as f64 * img_aspect / cell_aspect) as u32;
+                let height_if_width_limited =
+                    (max_width_cells as f64 * cell_aspect / img_aspect) as u32;
+
+                if width_if_height_limited <= max_width_cells {
+                    (width_if_height_limited.max(1), max_height_cells)
+                } else {
+                    (max_width_cells, height_if_width_limited.max(1))
+                }
+            };
 
         let mut image = pixels.clone();
         blend_transparency(&mut image, options.background);
-        let png = encode_png(&image, "kitty")?;
+        let png = encode_png(&image, "kitty", options.compress_level)?;
 
         let lines = self.build_chunks(
             &png,
@@ -128,8 +135,13 @@ impl Backend for KittyBackend {
         );
 
         if options.verbose {
-            eprintln!("  [Kitty] Rendering {}x{} pixels in {}x{} cells",
-                     image.width(), image.height(), width_cells, height_cells);
+            eprintln!(
+                "  [Kitty] Rendering {}x{} pixels in {}x{} cells",
+                image.width(),
+                image.height(),
+                width_cells,
+                height_cells
+            );
         }
 
         Ok(RenderedFrame {
@@ -188,7 +200,7 @@ mod tests {
             )
             .expect("render succeeds");
 
-        assert_eq!(rendered.width_cells, 2);
+        assert_eq!(rendered.width_cells, 48);
         assert_eq!(rendered.height_cells, 0);
         assert_eq!(rendered.lines.len(), 1);
         assert!(rendered.lines[0].starts_with("\x1b_G"));
