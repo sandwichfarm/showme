@@ -54,7 +54,11 @@ impl Renderer {
             eprintln!("Terminal information:");
             eprintln!("  Size: {}x{} cells", terminal.columns, terminal.rows);
             if let Some(w) = terminal.width_pixels {
-                eprintln!("  Pixel size: {}x{}", w, terminal.height_pixels.unwrap_or(0));
+                eprintln!(
+                    "  Pixel size: {}x{}",
+                    w,
+                    terminal.height_pixels.unwrap_or(0)
+                );
                 if let Some(ratio) = terminal.cell_aspect_ratio() {
                     eprintln!("  Cell aspect ratio: {:.3}", ratio);
                 }
@@ -108,7 +112,11 @@ impl Renderer {
         let mut stdout_output;
         let output: &mut dyn Write = if let Some(ref path) = self.config.output_file {
             file_output = std::fs::File::create(path).map_err(|err| {
-                RimgError::other(format!("failed to create output file '{}': {}", path.display(), err))
+                RimgError::other(format!(
+                    "failed to create output file '{}': {}",
+                    path.display(),
+                    err
+                ))
             })?;
             &mut file_output
         } else {
@@ -145,7 +153,8 @@ impl Renderer {
 
                 if self.config.verbose {
                     if let Some(frame) = sequence.first_frame() {
-                        eprintln!("  Image {}: {}x{} pixels, {} frames",
+                        eprintln!(
+                            "  Image {}: {}x{} pixels, {} frames",
                             idx + 1,
                             frame.pixels.width(),
                             frame.pixels.height(),
@@ -205,7 +214,10 @@ impl Renderer {
             eprintln!("  Total frames: {}", total_frames);
             eprintln!("  Load time: {:.2}s", elapsed.as_secs_f64());
             if sequences.len() > 0 {
-                eprintln!("  Average: {:.0}ms per image", elapsed.as_millis() as f64 / sequences.len() as f64);
+                eprintln!(
+                    "  Average: {:.0}ms per image",
+                    elapsed.as_millis() as f64 / sequences.len() as f64
+                );
             }
             eprintln!();
         }
@@ -230,7 +242,10 @@ impl Renderer {
         }
 
         // Apply frame offset and limit
-        let start_frame = self.config.frame_offset.min(sequence.frames.len().saturating_sub(1));
+        let start_frame = self
+            .config
+            .frame_offset
+            .min(sequence.frames.len().saturating_sub(1));
         let available_frames = &sequence.frames[start_frame..];
 
         let frames_to_render = if let Some(max) = self.config.max_frames {
@@ -319,9 +334,9 @@ impl Renderer {
         }
 
         // Use the first frame for scrolling
-        let frame = sequence.first_frame().ok_or_else(|| {
-            RimgError::other("cannot scroll: image has no frames")
-        })?;
+        let frame = sequence
+            .first_frame()
+            .ok_or_else(|| RimgError::other("cannot scroll: image has no frames"))?;
 
         // Render the full image
         let rendered = self.backend.render(frame, options)?;
@@ -408,7 +423,11 @@ impl Renderer {
                 let start_y = (*scroll_y).max(0) as usize;
                 let end_y = start_y.saturating_add(viewport_height.max(0) as usize);
 
-                for row in rendered_cells.iter().skip(start_y).take(end_y.saturating_sub(start_y)) {
+                for row in rendered_cells
+                    .iter()
+                    .skip(start_y)
+                    .take(end_y.saturating_sub(start_y))
+                {
                     let mut line = String::from("\x1b[0m");
                     let start = start_x.min(row.len());
                     let end = end_x.min(row.len());

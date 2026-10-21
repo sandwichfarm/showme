@@ -11,9 +11,18 @@ fn test_pixelation_mode_default() {
 fn test_pixelation_mode_from_str() {
     use std::str::FromStr;
 
-    assert_eq!(PixelationMode::from_str("quarter").unwrap(), PixelationMode::Quarter);
-    assert_eq!(PixelationMode::from_str("half").unwrap(), PixelationMode::Half);
-    assert_eq!(PixelationMode::from_str("q").unwrap(), PixelationMode::Quarter);
+    assert_eq!(
+        PixelationMode::from_str("quarter").unwrap(),
+        PixelationMode::Quarter
+    );
+    assert_eq!(
+        PixelationMode::from_str("half").unwrap(),
+        PixelationMode::Half
+    );
+    assert_eq!(
+        PixelationMode::from_str("q").unwrap(),
+        PixelationMode::Quarter
+    );
     assert_eq!(PixelationMode::from_str("h").unwrap(), PixelationMode::Half);
     assert!(PixelationMode::from_str("invalid").is_err());
 }

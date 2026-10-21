@@ -7,7 +7,6 @@
 /// References:
 /// - https://github.com/tmux/tmux/wiki/FAQ#what-is-the-passthrough-escape-sequence-and-how-do-i-use-it
 /// - https://sw.kovidgoyal.net/kitty/graphics-protocol/#tmux-support
-
 use std::env;
 
 /// Check if we're running inside a multiplexer (tmux or screen)
@@ -133,7 +132,10 @@ mod tests {
     fn test_wrap_multiple_escapes() {
         let seq = "\x1b[1m\x1b[31m\x1b[0m";
         let wrapped = wrap_for_tmux(seq);
-        assert_eq!(wrapped, "\x1bPtmux;\x1b\x1b[1m\x1b\x1b[31m\x1b\x1b[0m\x1b\\");
+        assert_eq!(
+            wrapped,
+            "\x1bPtmux;\x1b\x1b[1m\x1b\x1b[31m\x1b\x1b[0m\x1b\\"
+        );
     }
 
     #[test]

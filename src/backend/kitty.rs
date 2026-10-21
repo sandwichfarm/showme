@@ -87,11 +87,15 @@ impl Backend for KittyBackend {
         // Just calculate cell allocation based on aspect ratio
         let pixels = &frame.pixels;
 
-        let max_width_cells = options.sizing.width_cells
+        let max_width_cells = options
+            .sizing
+            .width_cells
             .unwrap_or(options.terminal.columns as u32)
             .min(options.terminal.columns as u32);
 
-        let max_height_cells = options.sizing.height_cells
+        let max_height_cells = options
+            .sizing
+            .height_cells
             .unwrap_or(options.terminal.rows as u32)
             .min(options.terminal.rows as u32);
 
@@ -100,20 +104,23 @@ impl Backend for KittyBackend {
         let cell_aspect = 0.5; // cells are twice as tall as wide
         let img_aspect = pixels.width() as f64 / pixels.height() as f64;
 
-        let (width_cells, height_cells) = if options.sizing.width_cells.is_some() && options.sizing.height_cells.is_some() {
-            // User specified both dimensions - use them directly
-            (max_width_cells, max_height_cells)
-        } else {
-            // Calculate to fit within terminal while preserving aspect ratio
-            let width_if_height_limited = (max_height_cells as f64 * img_aspect / cell_aspect) as u32;
-            let height_if_width_limited = (max_width_cells as f64 * cell_aspect / img_aspect) as u32;
-
-            if width_if_height_limited <= max_width_cells {
-                (width_if_height_limited.max(1), max_height_cells)
+        let (width_cells, height_cells) =
+            if options.sizing.width_cells.is_some() && options.sizing.height_cells.is_some() {
+                // User specified both dimensions - use them directly
+                (max_width_cells, max_height_cells)
             } else {
-                (max_width_cells, height_if_width_limited.max(1))
-            }
-        };
+                // Calculate to fit within terminal while preserving aspect ratio
+                let width_if_height_limited =
+                    (max_height_cells as f64 * img_aspect / cell_aspect) as u32;
+                let height_if_width_limited =
+                    (max_width_cells as f64 * cell_aspect / img_aspect) as u32;
+
+                if width_if_height_limited <= max_width_cells {
+                    (width_if_height_limited.max(1), max_height_cells)
+                } else {
+                    (max_width_cells, height_if_width_limited.max(1))
+                }
+            };
 
         let mut image = pixels.clone();
         blend_transparency(&mut image, options.background);
@@ -128,8 +135,13 @@ impl Backend for KittyBackend {
         );
 
         if options.verbose {
-            eprintln!("  [Kitty] Rendering {}x{} pixels in {}x{} cells",
-                     image.width(), image.height(), width_cells, height_cells);
+            eprintln!(
+                "  [Kitty] Rendering {}x{} pixels in {}x{} cells",
+                image.width(),
+                image.height(),
+                width_cells,
+                height_cells
+            );
         }
 
         Ok(RenderedFrame {

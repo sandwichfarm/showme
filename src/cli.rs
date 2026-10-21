@@ -8,7 +8,10 @@ use std::sync::OnceLock;
 
 use clap::{ArgAction, Parser};
 
-use crate::config::{BackendKind, BackgroundColor, Config, GridOptions, PixelationMode, RenderSizing, RotationMode, RgbColor};
+use crate::config::{
+    BackendKind, BackgroundColor, Config, GridOptions, PixelationMode, RenderSizing, RgbColor,
+    RotationMode,
+};
 use crate::error::{Result, RimgError};
 
 #[derive(Debug, Parser)]
@@ -59,11 +62,21 @@ pub struct Cli {
     geometry: Option<String>,
 
     /// Maximum width in terminal cells
-    #[arg(short = 'w', long = "width", value_name = "CELLS", conflicts_with = "geometry")]
+    #[arg(
+        short = 'w',
+        long = "width",
+        value_name = "CELLS",
+        conflicts_with = "geometry"
+    )]
     width: Option<u32>,
 
     /// Maximum height in terminal cells
-    #[arg(short = 'H', long = "height", value_name = "CELLS", conflicts_with = "geometry")]
+    #[arg(
+        short = 'H',
+        long = "height",
+        value_name = "CELLS",
+        conflicts_with = "geometry"
+    )]
     height: Option<u32>,
 
     /// Scale to fit width (may overflow height)
@@ -353,31 +366,33 @@ fn parse_rotation(value: &str) -> std::result::Result<RotationMode, String> {
 }
 
 fn parse_geometry(spec: &str) -> Result<(Option<u32>, Option<u32>)> {
-
     // Parse WIDTHxHEIGHT, WIDTHx, or xHEIGHT
     if spec.starts_with('x') {
         // xHEIGHT
-        let height = spec[1..].parse::<u32>().map_err(|_| {
-            RimgError::other(format!("invalid height in geometry '{}'", spec))
-        })?;
+        let height = spec[1..]
+            .parse::<u32>()
+            .map_err(|_| RimgError::other(format!("invalid height in geometry '{}'", spec)))?;
         Ok((None, Some(height)))
     } else if spec.ends_with('x') {
         // WIDTHx
-        let width = spec[..spec.len()-1].parse::<u32>().map_err(|_| {
-            RimgError::other(format!("invalid width in geometry '{}'", spec))
-        })?;
+        let width = spec[..spec.len() - 1]
+            .parse::<u32>()
+            .map_err(|_| RimgError::other(format!("invalid width in geometry '{}'", spec)))?;
         Ok((Some(width), None))
     } else if let Some(pos) = spec.find('x') {
         // WIDTHxHEIGHT
-        let width = spec[..pos].parse::<u32>().map_err(|_| {
-            RimgError::other(format!("invalid width in geometry '{}'", spec))
-        })?;
-        let height = spec[pos+1..].parse::<u32>().map_err(|_| {
-            RimgError::other(format!("invalid height in geometry '{}'", spec))
-        })?;
+        let width = spec[..pos]
+            .parse::<u32>()
+            .map_err(|_| RimgError::other(format!("invalid width in geometry '{}'", spec)))?;
+        let height = spec[pos + 1..]
+            .parse::<u32>()
+            .map_err(|_| RimgError::other(format!("invalid height in geometry '{}'", spec)))?;
         Ok((Some(width), Some(height)))
     } else {
-        Err(RimgError::other(format!("invalid geometry '{}'. Expected WIDTHxHEIGHT, WIDTHx, or xHEIGHT", spec)))
+        Err(RimgError::other(format!(
+            "invalid geometry '{}'. Expected WIDTHxHEIGHT, WIDTHx, or xHEIGHT",
+            spec
+        )))
     }
 }
 
@@ -390,15 +405,18 @@ fn parse_upscale(spec: Option<&str>) -> (bool, bool) {
     }
 }
 
-fn parse_scroll_settings(scroll_ms: Option<&str>, delta: Option<&str>) -> Result<(bool, std::time::Duration, i32, i32)> {
+fn parse_scroll_settings(
+    scroll_ms: Option<&str>,
+    delta: Option<&str>,
+) -> Result<(bool, std::time::Duration, i32, i32)> {
     let scroll_enabled = scroll_ms.is_some();
     let scroll_delay = if let Some(ms_str) = scroll_ms {
         if ms_str.is_empty() {
             std::time::Duration::from_millis(60) // default
         } else {
-            let ms = ms_str.parse::<u64>().map_err(|_| {
-                RimgError::other(format!("invalid scroll delay '{}'", ms_str))
-            })?;
+            let ms = ms_str
+                .parse::<u64>()
+                .map_err(|_| RimgError::other(format!("invalid scroll delay '{}'", ms_str)))?;
             std::time::Duration::from_millis(ms)
         }
     } else {
@@ -410,13 +428,13 @@ fn parse_scroll_settings(scroll_ms: Option<&str>, delta: Option<&str>) -> Result
         if parts.is_empty() {
             return Err(RimgError::other("delta-move requires at least dx value"));
         }
-        let dx = parts[0].parse::<i32>().map_err(|_| {
-            RimgError::other(format!("invalid dx in delta-move '{}'", parts[0]))
-        })?;
+        let dx = parts[0]
+            .parse::<i32>()
+            .map_err(|_| RimgError::other(format!("invalid dx in delta-move '{}'", parts[0])))?;
         let dy = if parts.len() > 1 {
-            parts[1].parse::<i32>().map_err(|_| {
-                RimgError::other(format!("invalid dy in delta-move '{}'", parts[1]))
-            })?
+            parts[1]
+                .parse::<i32>()
+                .map_err(|_| RimgError::other(format!("invalid dy in delta-move '{}'", parts[1])))?
         } else {
             0
         };
@@ -630,9 +648,8 @@ fn read_filelist(filelist_path: &Path, relative_to_filelist: bool) -> Result<Vec
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|| PathBuf::from("."))
     } else {
-        std::env::current_dir().map_err(|err| {
-            RimgError::other(format!("failed to get current directory: {}", err))
-        })?
+        std::env::current_dir()
+            .map_err(|err| RimgError::other(format!("failed to get current directory: {}", err)))?
     };
 
     for (line_num, line) in reader.lines().enumerate() {
@@ -671,7 +688,8 @@ mod tests {
 
     #[test]
     fn parses_upscale_without_mode_does_not_consume_input_path() {
-        let cli = Cli::try_parse_from(["showme", "--upscale", "on", "small-icon.png"]).expect("parse");
+        let cli =
+            Cli::try_parse_from(["showme", "--upscale", "on", "small-icon.png"]).expect("parse");
         let config = cli.into_config().expect("config");
         assert!(config.sizing.upscale);
         assert!(!config.sizing.upscale_integer);
@@ -680,7 +698,8 @@ mod tests {
 
     #[test]
     fn parses_upscale_integer_mode() {
-        let cli = Cli::try_parse_from(["showme", "--upscale", "i", "pixel-art.png"]).expect("parse");
+        let cli =
+            Cli::try_parse_from(["showme", "--upscale", "i", "pixel-art.png"]).expect("parse");
         let config = cli.into_config().expect("config");
         assert!(config.sizing.upscale);
         assert!(config.sizing.upscale_integer);

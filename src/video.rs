@@ -48,9 +48,8 @@ pub fn load_video(path: &Path) -> Result<Option<ImageSequence>> {
     let time_base = video_stream.time_base();
     let avg_frame_rate = video_stream.avg_frame_rate();
 
-    let codec_context =
-        ffmpeg::codec::context::Context::from_parameters(video_stream.parameters())
-            .map_err(|err| RimgError::other(format!("failed to load stream parameters: {err}")))?;
+    let codec_context = ffmpeg::codec::context::Context::from_parameters(video_stream.parameters())
+        .map_err(|err| RimgError::other(format!("failed to load stream parameters: {err}")))?;
 
     let mut decoder = codec_context
         .decoder()

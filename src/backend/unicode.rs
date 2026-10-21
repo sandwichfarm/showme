@@ -12,17 +12,17 @@ pub struct UnicodeBackend;
 #[derive(Debug, Clone, Copy)]
 enum QuarterBlock {
     Empty,
-    TopLeft,     // ▘
-    TopRight,    // ▝
-    BotLeft,     // ▖
-    BotRight,    // ▗
-    Top,         // ▀
-    Bottom,      // ▄
-    Left,        // ▌
-    Right,       // ▐
+    TopLeft,         // ▘
+    TopRight,        // ▝
+    BotLeft,         // ▖
+    BotRight,        // ▗
+    Top,             // ▀
+    Bottom,          // ▄
+    Left,            // ▌
+    Right,           // ▐
     TopLeftBotRight, // ▚
     TopRightBotLeft, // ▞
-    Full,        // █
+    Full,            // █
 }
 
 impl QuarterBlock {
@@ -133,16 +133,17 @@ impl UnicodeBackend {
             target_height += 1;
         }
 
-        let scaled = if target_width == frame.pixels.width() && target_height == frame.pixels.height() {
-            frame.pixels.clone()
-        } else {
-            let filter = if sizing.antialias {
-                FilterType::Lanczos3
+        let scaled =
+            if target_width == frame.pixels.width() && target_height == frame.pixels.height() {
+                frame.pixels.clone()
             } else {
-                FilterType::Nearest
+                let filter = if sizing.antialias {
+                    FilterType::Lanczos3
+                } else {
+                    FilterType::Nearest
+                };
+                resize(&frame.pixels, target_width, target_height, filter)
             };
-            resize(&frame.pixels, target_width, target_height, filter)
-        };
 
         let mut lines = Vec::with_capacity((target_height as usize + 1) / 2);
         let mut y = 0;
@@ -157,7 +158,15 @@ impl UnicodeBackend {
                     Rgba([0, 0, 0, 0])
                 };
 
-                append_half_block(&mut line, top, bottom, x, y, options.background, options.use_8bit_color);
+                append_half_block(
+                    &mut line,
+                    top,
+                    bottom,
+                    x,
+                    y,
+                    options.background,
+                    options.use_8bit_color,
+                );
                 x += 1;
             }
             line.push_str("\x1b[0m");
@@ -173,7 +182,11 @@ impl UnicodeBackend {
         })
     }
 
-    fn render_quarter_blocks(&self, frame: &Frame, options: RenderOptions) -> Result<RenderedFrame> {
+    fn render_quarter_blocks(
+        &self,
+        frame: &Frame,
+        options: RenderOptions,
+    ) -> Result<RenderedFrame> {
         let sizing = options.sizing;
         let terminal = options.terminal;
 
@@ -236,8 +249,10 @@ impl UnicodeBackend {
         let mut target_height = base_height;
 
         if options.verbose {
-            eprintln!("  [Unicode] Aspect ratio correction: {}x{} -> {}x{} (stretch={:.1}x)",
-                     base_width, base_height, target_width, target_height, sizing.width_stretch);
+            eprintln!(
+                "  [Unicode] Aspect ratio correction: {}x{} -> {}x{} (stretch={:.1}x)",
+                base_width, base_height, target_width, target_height, sizing.width_stretch
+            );
         }
 
         if target_width == 0 {
@@ -255,16 +270,17 @@ impl UnicodeBackend {
             target_height += 1;
         }
 
-        let scaled = if target_width == frame.pixels.width() && target_height == frame.pixels.height() {
-            frame.pixels.clone()
-        } else {
-            let filter = if sizing.antialias {
-                FilterType::Lanczos3
+        let scaled =
+            if target_width == frame.pixels.width() && target_height == frame.pixels.height() {
+                frame.pixels.clone()
             } else {
-                FilterType::Nearest
+                let filter = if sizing.antialias {
+                    FilterType::Lanczos3
+                } else {
+                    FilterType::Nearest
+                };
+                resize(&frame.pixels, target_width, target_height, filter)
             };
-            resize(&frame.pixels, target_width, target_height, filter)
-        };
 
         let mut lines = Vec::with_capacity((target_height as usize + 1) / 2);
         let mut y = 0;
@@ -289,7 +305,17 @@ impl UnicodeBackend {
                     tl
                 };
 
-                append_quarter_block(&mut line, tl, tr, bl, br, x, y, options.background, options.use_8bit_color);
+                append_quarter_block(
+                    &mut line,
+                    tl,
+                    tr,
+                    bl,
+                    br,
+                    x,
+                    y,
+                    options.background,
+                    options.use_8bit_color,
+                );
                 x += 2;
             }
             line.push_str("\x1b[0m");
@@ -476,10 +502,50 @@ fn find_best_quarter_block(
         // Calculate error for this configuration
         let mut error = 0.0f32;
         for (pixel, should_be_fg) in [
-            (tl, matches!(block, QuarterBlock::TopLeft | QuarterBlock::Top | QuarterBlock::Left | QuarterBlock::TopLeftBotRight | QuarterBlock::Full)),
-            (tr, matches!(block, QuarterBlock::TopRight | QuarterBlock::Top | QuarterBlock::Right | QuarterBlock::TopRightBotLeft | QuarterBlock::Full)),
-            (bl, matches!(block, QuarterBlock::BotLeft | QuarterBlock::Bottom | QuarterBlock::Left | QuarterBlock::TopRightBotLeft | QuarterBlock::Full)),
-            (br, matches!(block, QuarterBlock::BotRight | QuarterBlock::Bottom | QuarterBlock::Right | QuarterBlock::TopLeftBotRight | QuarterBlock::Full)),
+            (
+                tl,
+                matches!(
+                    block,
+                    QuarterBlock::TopLeft
+                        | QuarterBlock::Top
+                        | QuarterBlock::Left
+                        | QuarterBlock::TopLeftBotRight
+                        | QuarterBlock::Full
+                ),
+            ),
+            (
+                tr,
+                matches!(
+                    block,
+                    QuarterBlock::TopRight
+                        | QuarterBlock::Top
+                        | QuarterBlock::Right
+                        | QuarterBlock::TopRightBotLeft
+                        | QuarterBlock::Full
+                ),
+            ),
+            (
+                bl,
+                matches!(
+                    block,
+                    QuarterBlock::BotLeft
+                        | QuarterBlock::Bottom
+                        | QuarterBlock::Left
+                        | QuarterBlock::TopRightBotLeft
+                        | QuarterBlock::Full
+                ),
+            ),
+            (
+                br,
+                matches!(
+                    block,
+                    QuarterBlock::BotRight
+                        | QuarterBlock::Bottom
+                        | QuarterBlock::Right
+                        | QuarterBlock::TopLeftBotRight
+                        | QuarterBlock::Full
+                ),
+            ),
         ] {
             if let Some(color) = pixel {
                 let target = if should_be_fg { fg_avg } else { bg_avg };
@@ -510,7 +576,11 @@ fn average_colors(colors: &[[u8; 3]]) -> [u8; 3] {
     let sum_g: u32 = colors.iter().map(|c| c[1] as u32).sum();
     let sum_b: u32 = colors.iter().map(|c| c[2] as u32).sum();
     let len = colors.len() as u32;
-    [(sum_r / len) as u8, (sum_g / len) as u8, (sum_b / len) as u8]
+    [
+        (sum_r / len) as u8,
+        (sum_g / len) as u8,
+        (sum_b / len) as u8,
+    ]
 }
 
 fn color_distance(c1: [u8; 3], c2: [u8; 3]) -> f32 {

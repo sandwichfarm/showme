@@ -59,7 +59,11 @@ pub fn color_256_to_rgb(index: u8) -> RgbColor {
         // Grayscale ramp (232-255)
         232..=255 => {
             let level = ((index - 232) * 10 + 4) as u8;
-            RgbColor { r: level, g: level, b: level }
+            RgbColor {
+                r: level,
+                g: level,
+                b: level,
+            }
         }
         // RGB cube (16-231)
         16..=231 => {
@@ -74,7 +78,11 @@ pub fn color_256_to_rgb(index: u8) -> RgbColor {
             }
         }
         // System colors - approximate
-        _ => RgbColor { r: 128, g: 128, b: 128 },
+        _ => RgbColor {
+            r: 128,
+            g: 128,
+            b: 128,
+        },
     }
 }
 

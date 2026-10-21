@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use showme::{BackendKind, Config, PixelationMode, RenderSizing, RotationMode};
+use std::path::PathBuf;
 
 #[test]
 fn test_config_with_all_options() {

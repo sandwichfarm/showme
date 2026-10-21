@@ -1,7 +1,7 @@
+use showme::capabilities::BackendConfidence;
+use showme::{BackendKind, detect_terminal_backend, detect_terminal_name, is_in_multiplexer};
 use std::env;
 use std::sync::Mutex;
-use showme::{BackendKind, detect_terminal_backend, detect_terminal_name, is_in_multiplexer};
-use showme::capabilities::BackendConfidence;
 
 // Mutex to serialize tests that modify environment variables
 // This prevents race conditions when tests run in parallel

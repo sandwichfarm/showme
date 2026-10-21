@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
-use showme::image::load_image;
 use showme::RotationMode;
+use showme::image::load_image;
 
 fn write_temp_file(name: &str, bytes: &[u8]) -> PathBuf {
     let mut path = std::env::temp_dir();
@@ -35,7 +35,9 @@ fn make_uncompressed_argb8888_dds_2x2() -> Vec<u8> {
 
     // DDS_HEADER (124 bytes)
     out.extend_from_slice(&124u32.to_le_bytes()); // dwSize
-    out.extend_from_slice(&(DDSD_CAPS | DDSD_HEIGHT | DDSD_WIDTH | DDSD_PITCH | DDSD_PIXELFORMAT).to_le_bytes()); // dwFlags
+    out.extend_from_slice(
+        &(DDSD_CAPS | DDSD_HEIGHT | DDSD_WIDTH | DDSD_PITCH | DDSD_PIXELFORMAT).to_le_bytes(),
+    ); // dwFlags
     out.extend_from_slice(&height.to_le_bytes()); // dwHeight
     out.extend_from_slice(&width.to_le_bytes()); // dwWidth
     out.extend_from_slice(&pitch.to_le_bytes()); // dwPitchOrLinearSize

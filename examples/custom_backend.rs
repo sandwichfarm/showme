@@ -1,3 +1,5 @@
+use showme::config::{BackgroundColor, PixelationMode, RotationMode};
+use showme::{BackendKind, Config, RenderSizing, Renderer};
 /// Custom backend selection example
 ///
 /// This example demonstrates how to force a specific rendering backend
@@ -5,10 +7,7 @@
 ///
 /// Usage: cargo run --example custom_backend <backend> <image-path>
 ///        Backends: auto, unicode, kitty, iterm2
-
 use std::path::PathBuf;
-use showme::{Config, Renderer, BackendKind, RenderSizing};
-use showme::config::{PixelationMode, RotationMode, BackgroundColor};
 
 fn main() -> showme::Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -48,7 +47,7 @@ fn main() -> showme::Result<()> {
         rotation: RotationMode::Exif,
         background: BackgroundColor::Auto,
         quiet: false,
-        verbose: true,  // Enable verbose mode to see backend info
+        verbose: true, // Enable verbose mode to see backend info
         clear_once: false,
         clear_between: false,
         wait_between_images: None,

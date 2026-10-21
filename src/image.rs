@@ -75,7 +75,12 @@ pub fn load_image(
     // Check for QOI format first (not supported by image crate's auto-detection)
     #[cfg(feature = "qoi")]
     {
-        if path.extension().and_then(|s| s.to_str()).map(|s| s.to_lowercase()) == Some("qoi".to_string()) {
+        if path
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_lowercase())
+            == Some("qoi".to_string())
+        {
             return load_qoi(path, rotation_mode, auto_crop, crop_border);
         }
     }
@@ -83,7 +88,12 @@ pub fn load_image(
     // Check for PDF format
     #[cfg(feature = "pdf")]
     {
-        if path.extension().and_then(|s| s.to_str()).map(|s| s.to_lowercase()) == Some("pdf".to_string()) {
+        if path
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_lowercase())
+            == Some("pdf".to_string())
+        {
             return load_pdf(path, rotation_mode, auto_crop, crop_border);
         }
     }
@@ -91,7 +101,10 @@ pub fn load_image(
     // Check for SVG format
     #[cfg(feature = "svg")]
     {
-        let ext = path.extension().and_then(|s| s.to_str()).map(|s| s.to_lowercase());
+        let ext = path
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_lowercase());
         if ext == Some("svg".to_string()) || ext == Some("svgz".to_string()) {
             return load_svg(path, rotation_mode, auto_crop, crop_border);
         }
@@ -109,11 +122,17 @@ pub fn load_image(
 
     match reader.format() {
         Some(ImageFormat::Gif) => load_gif(path, rotation_mode, auto_crop, crop_border),
-        Some(_) | None => load_static_image(reader.decode(), path, rotation_mode, auto_crop, crop_border),
+        Some(_) | None => {
+            load_static_image(reader.decode(), path, rotation_mode, auto_crop, crop_border)
+        }
     }
 }
 
-fn load_from_stdin(rotation_mode: RotationMode, auto_crop: bool, crop_border: u32) -> Result<ImageSequence> {
+fn load_from_stdin(
+    rotation_mode: RotationMode,
+    auto_crop: bool,
+    crop_border: u32,
+) -> Result<ImageSequence> {
     let mut buffer = Vec::new();
     std::io::stdin()
         .read_to_end(&mut buffer)
@@ -122,7 +141,9 @@ fn load_from_stdin(rotation_mode: RotationMode, auto_crop: bool, crop_border: u3
     let cursor = Cursor::new(buffer);
     let reader = ImageReader::new(cursor)
         .with_guessed_format()
-        .map_err(|err| RimgError::other(format!("failed to detect image format from stdin: {}", err)))?;
+        .map_err(|err| {
+            RimgError::other(format!("failed to detect image format from stdin: {}", err))
+        })?;
 
     let path = PathBuf::from("<stdin>");
     match reader.format() {
@@ -130,19 +151,20 @@ fn load_from_stdin(rotation_mode: RotationMode, auto_crop: bool, crop_border: u3
             // For GIF from stdin, need to recreate cursor
             let data = reader.into_inner().into_inner();
             let cursor = Cursor::new(data);
-            let decoder = GifDecoder::new(BufReader::new(cursor))
-                .map_err(|err| RimgError::ImageOpen {
+            let decoder =
+                GifDecoder::new(BufReader::new(cursor)).map_err(|err| RimgError::ImageOpen {
                     path: path.clone(),
                     source: err,
                 })?;
 
-            let frames = decoder
-                .into_frames()
-                .collect_frames()
-                .map_err(|err| RimgError::FrameDecode {
-                    path: path.clone(),
-                    source: err,
-                })?;
+            let frames =
+                decoder
+                    .into_frames()
+                    .collect_frames()
+                    .map_err(|err| RimgError::FrameDecode {
+                        path: path.clone(),
+                        source: err,
+                    })?;
 
             let frames: Vec<Frame> = frames
                 .into_iter()
@@ -163,7 +185,13 @@ fn load_from_stdin(rotation_mode: RotationMode, auto_crop: bool, crop_border: u3
 
             Ok(ImageSequence { path, frames })
         }
-        Some(_) | None => load_static_image(reader.decode(), &path, rotation_mode, auto_crop, crop_border),
+        Some(_) | None => load_static_image(
+            reader.decode(),
+            &path,
+            rotation_mode,
+            auto_crop,
+            crop_border,
+        ),
     }
 }
 
@@ -201,7 +229,12 @@ fn load_static_image(
     })
 }
 
-fn load_gif(path: &Path, _rotation_mode: RotationMode, _auto_crop: bool, _crop_border: u32) -> Result<ImageSequence> {
+fn load_gif(
+    path: &Path,
+    _rotation_mode: RotationMode,
+    _auto_crop: bool,
+    _crop_border: u32,
+) -> Result<ImageSequence> {
     // Note: EXIF rotation is not applied to GIF animations as they typically don't have EXIF data
     // Note: Auto-crop is not applied to animations to maintain frame consistency
     let file = File::open(path)?;
@@ -241,7 +274,12 @@ fn load_gif(path: &Path, _rotation_mode: RotationMode, _auto_crop: bool, _crop_b
     })
 }
 
-fn load_dds(path: &Path, rotation_mode: RotationMode, auto_crop: bool, crop_border: u32) -> Result<ImageSequence> {
+fn load_dds(
+    path: &Path,
+    rotation_mode: RotationMode,
+    auto_crop: bool,
+    crop_border: u32,
+) -> Result<ImageSequence> {
     const DDS_MAGIC: &[u8; 4] = b"DDS ";
     const DDS_HEADER_LEN: usize = 124;
     const DDSD_PITCH: u32 = 0x0000_0008;
@@ -331,8 +369,7 @@ fn load_dds(path: &Path, rotation_mode: RotationMode, auto_crop: bool, crop_bord
             width as usize * bytes_per_pixel
         };
 
-        let required = data_offset
-            .saturating_add(pitch.saturating_mul(height as usize));
+        let required = data_offset.saturating_add(pitch.saturating_mul(height as usize));
         if data.len() < required {
             return Err(RimgError::other("DDS: file truncated"));
         }
@@ -352,7 +389,11 @@ fn load_dds(path: &Path, rotation_mode: RotationMode, auto_crop: bool, crop_bord
                 out[idx] = extract_channel(value, r_mask);
                 out[idx + 1] = extract_channel(value, g_mask);
                 out[idx + 2] = extract_channel(value, b_mask);
-                out[idx + 3] = if a_mask == 0 { 255 } else { extract_channel(value, a_mask) };
+                out[idx + 3] = if a_mask == 0 {
+                    255
+                } else {
+                    extract_channel(value, a_mask)
+                };
             }
         }
 
@@ -471,7 +512,12 @@ fn load_dds(path: &Path, rotation_mode: RotationMode, auto_crop: bool, crop_bord
 }
 
 #[cfg(feature = "qoi")]
-fn load_qoi(path: &Path, rotation_mode: RotationMode, auto_crop: bool, crop_border: u32) -> Result<ImageSequence> {
+fn load_qoi(
+    path: &Path,
+    rotation_mode: RotationMode,
+    auto_crop: bool,
+    crop_border: u32,
+) -> Result<ImageSequence> {
     // Read entire file into memory (QOI decoder needs bytes)
     let data = std::fs::read(path).map_err(|err| RimgError::ImageOpen {
         path: path.to_path_buf(),
@@ -479,7 +525,11 @@ fn load_qoi(path: &Path, rotation_mode: RotationMode, auto_crop: bool, crop_bord
     })?;
 
     let (header, data) = qoi::decode_to_vec(&data).map_err(|err| {
-        RimgError::other(format!("QOI decode error for '{}': {}", path.display(), err))
+        RimgError::other(format!(
+            "QOI decode error for '{}': {}",
+            path.display(),
+            err
+        ))
     })?;
 
     // Convert QOI data (RGB or RGBA) to RgbaImage
@@ -536,7 +586,7 @@ fn read_exif_orientation(path: &Path) -> Option<u32> {
 
 /// Apply EXIF orientation transformation to an image
 fn apply_orientation(image: DynamicImage, orientation: u32) -> DynamicImage {
-    use image::imageops::{flip_horizontal, flip_vertical, rotate180, rotate270, rotate90};
+    use image::imageops::{flip_horizontal, flip_vertical, rotate90, rotate180, rotate270};
 
     match orientation {
         1 => image, // Normal
@@ -560,7 +610,12 @@ fn apply_orientation(image: DynamicImage, orientation: u32) -> DynamicImage {
 }
 
 #[cfg(feature = "pdf")]
-fn load_pdf(path: &Path, rotation_mode: RotationMode, auto_crop: bool, crop_border: u32) -> Result<ImageSequence> {
+fn load_pdf(
+    path: &Path,
+    rotation_mode: RotationMode,
+    auto_crop: bool,
+    crop_border: u32,
+) -> Result<ImageSequence> {
     use pdfium_render::prelude::*;
 
     fn bind_pdfium() -> std::result::Result<Box<dyn PdfiumLibraryBindings>, PdfiumError> {
@@ -575,31 +630,33 @@ fn load_pdf(path: &Path, rotation_mode: RotationMode, auto_crop: bool, crop_bord
         if let Ok(dir) = std::env::var("SHOWME_PDFIUM_DIR") {
             let dir = dir.trim();
             if !dir.is_empty() {
-                candidates.push(Pdfium::pdfium_platform_library_name_at_path(std::path::Path::new(
-                    dir,
-                )));
+                candidates.push(Pdfium::pdfium_platform_library_name_at_path(
+                    std::path::Path::new(dir),
+                ));
             }
         }
 
         if let Ok(exe) = std::env::current_exe() {
             if let Some(dir) = exe.parent() {
                 candidates.push(Pdfium::pdfium_platform_library_name_at_path(dir));
-                candidates.push(Pdfium::pdfium_platform_library_name_at_path(&dir.join("lib")));
+                candidates.push(Pdfium::pdfium_platform_library_name_at_path(
+                    &dir.join("lib"),
+                ));
             }
         }
 
         // Backwards-compatible: current working directory.
-        candidates.push(Pdfium::pdfium_platform_library_name_at_path(std::path::Path::new(
-            ".",
-        )));
+        candidates.push(Pdfium::pdfium_platform_library_name_at_path(
+            std::path::Path::new("."),
+        ));
 
         // Common install locations.
-        candidates.push(Pdfium::pdfium_platform_library_name_at_path(std::path::Path::new(
-            "/opt/homebrew/lib",
-        )));
-        candidates.push(Pdfium::pdfium_platform_library_name_at_path(std::path::Path::new(
-            "/usr/local/lib",
-        )));
+        candidates.push(Pdfium::pdfium_platform_library_name_at_path(
+            std::path::Path::new("/opt/homebrew/lib"),
+        ));
+        candidates.push(Pdfium::pdfium_platform_library_name_at_path(
+            std::path::Path::new("/usr/local/lib"),
+        ));
 
         // Try each explicit candidate path, then fall back to system search.
         for candidate in candidates {
@@ -618,32 +675,37 @@ fn load_pdf(path: &Path, rotation_mode: RotationMode, auto_crop: bool, crop_bord
     );
 
     // Load the PDF document
-    let document = pdfium
-        .load_pdf_from_file(path, None)
-        .map_err(|err| RimgError::other(format!("Failed to load PDF '{}': {}", path.display(), err)))?;
+    let document = pdfium.load_pdf_from_file(path, None).map_err(|err| {
+        RimgError::other(format!("Failed to load PDF '{}': {}", path.display(), err))
+    })?;
 
     let page_count = document.pages().len();
     if page_count == 0 {
-        return Err(RimgError::other(format!("PDF '{}' has no pages", path.display())));
+        return Err(RimgError::other(format!(
+            "PDF '{}' has no pages",
+            path.display()
+        )));
     }
 
     let mut frames = Vec::with_capacity(page_count as usize);
 
     // Render each page
     for page_index in 0..page_count {
-        let page = document
-            .pages()
-            .get(page_index)
-            .map_err(|err| RimgError::other(format!("Failed to get page {} from PDF: {}", page_index, err)))?;
+        let page = document.pages().get(page_index).map_err(|err| {
+            RimgError::other(format!(
+                "Failed to get page {} from PDF: {}",
+                page_index, err
+            ))
+        })?;
 
         // Render at 150 DPI for good quality
         let render_config = PdfRenderConfig::new()
             .set_target_width(2000)
             .set_maximum_width(4000);
 
-        let bitmap = page
-            .render_with_config(&render_config)
-            .map_err(|err| RimgError::other(format!("Failed to render PDF page {}: {}", page_index, err)))?;
+        let bitmap = page.render_with_config(&render_config).map_err(|err| {
+            RimgError::other(format!("Failed to render PDF page {}: {}", page_index, err))
+        })?;
 
         // Convert bitmap to RgbaImage
         let width = bitmap.width() as u32;
@@ -688,7 +750,12 @@ fn load_pdf(path: &Path, rotation_mode: RotationMode, auto_crop: bool, crop_bord
 }
 
 #[cfg(feature = "svg")]
-fn load_svg(path: &Path, rotation_mode: RotationMode, auto_crop: bool, crop_border: u32) -> Result<ImageSequence> {
+fn load_svg(
+    path: &Path,
+    rotation_mode: RotationMode,
+    auto_crop: bool,
+    crop_border: u32,
+) -> Result<ImageSequence> {
     use resvg::usvg;
 
     // Read SVG file
@@ -699,8 +766,9 @@ fn load_svg(path: &Path, rotation_mode: RotationMode, auto_crop: bool, crop_bord
 
     // Parse SVG
     let options = usvg::Options::default();
-    let tree = usvg::Tree::from_data(&svg_data, &options)
-        .map_err(|err| RimgError::other(format!("Failed to parse SVG '{}': {}", path.display(), err)))?;
+    let tree = usvg::Tree::from_data(&svg_data, &options).map_err(|err| {
+        RimgError::other(format!("Failed to parse SVG '{}': {}", path.display(), err))
+    })?;
 
     // Get SVG size
     let size = tree.size();

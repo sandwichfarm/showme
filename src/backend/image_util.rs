@@ -11,7 +11,10 @@ use crate::image::Frame;
 
 /// Scale frame for graphics protocols (Kitty, iTerm2, Sixel)
 /// These can display high-resolution images, so we keep original resolution
-pub(crate) fn scale_frame_for_graphics(frame: &Frame, options: RenderOptions) -> (image::RgbaImage, u32, u32) {
+pub(crate) fn scale_frame_for_graphics(
+    frame: &Frame,
+    options: RenderOptions,
+) -> (image::RgbaImage, u32, u32) {
     let pixels = &frame.pixels;
 
     // Calculate cell allocation (how much terminal space to use)
@@ -112,7 +115,11 @@ pub(crate) fn scale_frame(frame: &Frame, options: RenderOptions) -> (image::Rgba
     (scaled, width_cells, height_cells)
 }
 
-pub(crate) fn encode_png(image: &image::RgbaImage, backend_name: &str, compress_level: u8) -> Result<Vec<u8>> {
+pub(crate) fn encode_png(
+    image: &image::RgbaImage,
+    backend_name: &str,
+    compress_level: u8,
+) -> Result<Vec<u8>> {
     let (compression, filter) = match compress_level {
         0 => (PngCompressionType::Fast, PngFilterType::NoFilter),
         1..=3 => (PngCompressionType::Fast, PngFilterType::Sub),

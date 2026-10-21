@@ -46,12 +46,14 @@ impl TerminalSize {
     pub fn recommended_width_stretch(&self) -> f32 {
         // If we can detect aspect ratio, use it
         // Otherwise, use a reasonable default for common terminals (2.0)
-        self.cell_aspect_ratio().map(|ratio| {
-            // Character cells are typically 2:1 (height:width) ratio (ratio = 0.5)
-            // We need to expand width to compensate: 1.0 / ratio
-            // If ratio is 0.5 (cell is 2x taller than wide), stretch = 2.0
-            1.0 / ratio
-        }).unwrap_or(2.0) // Default assumption: chars are ~2x as tall as wide, so stretch by 2x
+        self.cell_aspect_ratio()
+            .map(|ratio| {
+                // Character cells are typically 2:1 (height:width) ratio (ratio = 0.5)
+                // We need to expand width to compensate: 1.0 / ratio
+                // If ratio is 0.5 (cell is 2x taller than wide), stretch = 2.0
+                1.0 / ratio
+            })
+            .unwrap_or(2.0) // Default assumption: chars are ~2x as tall as wide, so stretch by 2x
     }
 }
 
@@ -149,9 +151,7 @@ fn query_terminal_pixel_size() -> Option<(u16, u16)> {
         // Parse response: ESC [ 6 ; height ; width t
         let response_str = String::from_utf8_lossy(&response);
         if response_str.starts_with("\x1b[6;") && response_str.ends_with('t') {
-            let parts: Vec<&str> = response_str[4..response_str.len()-1]
-                .split(';')
-                .collect();
+            let parts: Vec<&str> = response_str[4..response_str.len() - 1].split(';').collect();
 
             if parts.len() >= 2 {
                 let height = parts[0].parse::<u16>().ok()?;
@@ -200,7 +200,11 @@ pub fn detect_terminal_backend() -> TerminalBackendGuess {
     // Kitty sets KITTY_WINDOW_ID, Ghostty sets TERM=xterm-ghostty
     if let Ok(term) = env::var("TERM") {
         let term_lower = term.to_ascii_lowercase();
-        if term_lower.contains("kitty") || term_lower.contains("ghostty") || term == "xterm-kitty" || term == "xterm-ghostty" {
+        if term_lower.contains("kitty")
+            || term_lower.contains("ghostty")
+            || term == "xterm-kitty"
+            || term == "xterm-ghostty"
+        {
             return TerminalBackendGuess {
                 backend: BackendKind::Kitty,
                 confidence: BackendConfidence::Certain,
