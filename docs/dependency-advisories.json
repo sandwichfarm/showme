@@ -1,0 +1,8 @@
+{
+  "RUSTSEC-2024-0436": {
+    "package": "paste",
+    "owner": "showme maintainers",
+    "disposition": "Unmaintained build-time token-pasting dependency in the image/EXR SIMD chain. No vulnerability is reported for this warning. Keep it visible and migrate when the upstream image/EXR stack replaces it; reassess on each dependency update.",
+    "source": "https://rustsec.org/advisories/RUSTSEC-2024-0436.html"
+  }
+}

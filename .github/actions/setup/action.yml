@@ -1,0 +1,77 @@
+name: Set up showme
+description: Install the selected Rust toolchain and native dependencies for a feature set
+inputs:
+  toolchain:
+    description: Rust version
+    default: '1.98.1'
+  target:
+    description: Rust target triple
+    required: true
+  features:
+    description: Comma-separated Cargo features
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Rust toolchain
+      shell: bash
+      env:
+        SETUP_TOOLCHAIN: ${{ inputs.toolchain }}
+        SETUP_TARGET: ${{ inputs.target }}
+      run: |
+        rustup toolchain install "$SETUP_TOOLCHAIN" --profile minimal --component clippy --component rustfmt
+        rustup override set "$SETUP_TOOLCHAIN"
+        rustup target add --toolchain "$SETUP_TOOLCHAIN" "$SETUP_TARGET"
+    - name: Linux native libraries
+      if: runner.os == 'Linux'
+      shell: bash
+      env:
+        SETUP_FEATURES: ${{ inputs.features }}
+      run: |
+        packages=(pkg-config clang)
+        if [[ ",$SETUP_FEATURES," == *,video,* ]]; then
+          packages+=(libavcodec-dev libavformat-dev libavutil-dev libswscale-dev)
+        fi
+        if [[ ",$SETUP_FEATURES," == *,sixel,* ]]; then
+          packages+=(autoconf automake libtool make gcc)
+        fi
+        sudo apt-get update
+        sudo apt-get install -y "${packages[@]}"
+    - name: macOS native libraries
+      if: runner.os == 'macOS'
+      shell: bash
+      env:
+        SETUP_FEATURES: ${{ inputs.features }}
+        HOMEBREW_NO_AUTO_UPDATE: '1'
+        HOMEBREW_NO_INSTALL_CLEANUP: '1'
+      run: |
+        packages=()
+        if [[ ",$SETUP_FEATURES," == *,video,* ]]; then
+          packages+=(ffmpeg pkg-config)
+        fi
+        if [[ ",$SETUP_FEATURES," == *,sixel,* ]]; then
+          packages+=(autoconf automake libtool)
+        fi
+        if (( ${#packages[@]} )); then
+          brew install "${packages[@]}"
+        fi
+    - name: PDFium runtime
+      shell: bash
+      env:
+        SETUP_TARGET: ${{ inputs.target }}
+        SETUP_FEATURES: ${{ inputs.features }}
+      run: |
+        if [[ ",$SETUP_FEATURES," != *,pdf,* ]]; then
+          exit 0
+        fi
+        case "$SETUP_TARGET" in
+          x86_64-unknown-linux-gnu) platform=linux-x64 ;;
+          aarch64-unknown-linux-gnu) platform=linux-arm64 ;;
+          x86_64-apple-darwin) platform=mac-x64 ;;
+          aarch64-apple-darwin) platform=mac-arm64 ;;
+          x86_64-pc-windows-msvc) platform=win-x64 ;;
+          *) echo "Unsupported PDFium target: $SETUP_TARGET" >&2; exit 1 ;;
+        esac
+        native_dir="$RUNNER_TEMP/showme-pdfium"
+        python3 scripts/fetch_pdfium.py --platform "$platform" --directory "$native_dir"
+        echo "SHOWME_PDFIUM_DIR=$native_dir" >> "$GITHUB_ENV"

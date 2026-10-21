@@ -2,242 +2,67 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
 
-env:
-  CARGO_TERM_COLOR: always
+permissions:
+  contents: read
 
 jobs:
-  publish-crate:
-    name: Publish to crates.io
-    runs-on: ubuntu-latest
-
+  version:
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          submodules: recursive
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libavcodec-dev libavformat-dev \
-                                  libavutil-dev libavfilter-dev libavdevice-dev \
-                                  libswscale-dev libswresample-dev clang
-
-      - name: Publish to crates.io
+          persist-credentials: false
+      - name: Verify tag and manifest agreement
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: |
-          # Try to publish, but don't fail if crate version already exists
-          if cargo publish --token ${CARGO_REGISTRY_TOKEN} 2>&1 | tee publish.log; then
-            echo "✅ Successfully published to crates.io"
-          else
-            if grep -q "already uploaded\|already exists" publish.log; then
-              echo "ℹ️  Crate version already published to crates.io, skipping..."
-              exit 0
-            else
-              echo "❌ Failed to publish to crates.io"
-              cat publish.log
-              exit 1
-            fi
-          fi
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python3 scripts/publish_crate.py --tag "$RELEASE_TAG"
 
-  build-binaries:
-    name: Build ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Linux
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            artifact_name: showme
-            asset_name: showme-linux-x86_64
+  verify:
+    needs: version
+    uses: ./.github/workflows/verify.yml
 
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            artifact_name: showme
-            asset_name: showme-linux-aarch64
-            cross: true
+  binaries:
+    needs: verify
+    uses: ./.github/workflows/artifacts.yml
 
-          # macOS
-          - os: macos-13  # Intel runner for x86_64
-            target: x86_64-apple-darwin
-            artifact_name: showme
-            asset_name: showme-macos-x86_64
-
-          - os: macos-latest  # ARM runner for aarch64
-            target: aarch64-apple-darwin
-            artifact_name: showme
-            asset_name: showme-macos-aarch64
-
-          # Windows
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            artifact_name: showme.exe
-            asset_name: showme-windows-x86_64.exe
-
+  publish-crate:
+    needs: [verify, binaries]
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          submodules: recursive
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+          persist-credentials: false
+      - uses: ./.github/actions/setup
         with:
-          targets: ${{ matrix.target }}
-
-      - name: Install dependencies (Ubuntu)
-        if: matrix.os == 'ubuntu-latest' && !matrix.cross
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libavcodec-dev libavformat-dev \
-                                  libavutil-dev libavfilter-dev libavdevice-dev \
-                                  libswscale-dev libswresample-dev clang
-
-      - name: Install cross-compilation tools (Linux ARM64)
-        if: matrix.cross && matrix.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-          rustup target add aarch64-unknown-linux-gnu
-
-      - name: Install dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install ffmpeg pkg-config
-
-      # Windows: Skip ffmpeg for now (complex setup)
-      # Video feature will be disabled in build step
-
-      - name: Build (native)
-        if: "!matrix.cross"
-        run: |
-          # Build without video feature on Windows (ffmpeg setup complex)
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cargo build --release --locked --target ${{ matrix.target }} --no-default-features --features unicode,kitty,iterm2,qoi,pdf,svg
-          else
-            cargo build --release --locked --target ${{ matrix.target }}
-          fi
-        shell: bash
-
-      - name: Build (cross)
-        if: matrix.cross
-        run: |
-          cargo install cross --git https://github.com/cross-rs/cross
-          # Build without video feature for cross-compilation (ARM64 ffmpeg not readily available)
-          cross build --release --locked --target ${{ matrix.target }} --no-default-features --features unicode,kitty,iterm2,qoi,pdf,svg
-
-      - name: Strip binary (Linux/macOS)
-        if: matrix.os != 'windows-latest' && !matrix.cross
-        run: strip target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
-
-      - name: Create tarball (Linux/macOS)
-        if: matrix.os != 'windows-latest'
-        run: |
-          cd target/${{ matrix.target }}/release
-          tar czf ../../../${{ matrix.asset_name }}.tar.gz ${{ matrix.artifact_name }}
-          cd ../../..
-
-      - name: Create zip (Windows)
-        if: matrix.os == 'windows-latest'
-        run: |
-          cd target/${{ matrix.target }}/release
-          7z a ../../../${{ matrix.asset_name }}.zip ${{ matrix.artifact_name }}
-          cd ../../..
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.asset_name }}
-          path: |
-            ${{ matrix.asset_name }}.tar.gz
-            ${{ matrix.asset_name }}.zip
-          if-no-files-found: error
+          target: x86_64-unknown-linux-gnu
+          features: unicode,kitty,iterm2,qoi,pdf,svg,video
+      - name: Publish or verify identical existing package
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: python3 scripts/publish_crate.py --tag "$RELEASE_TAG" --publish
 
   create-release:
-    name: Create GitHub Release
-    runs-on: ubuntu-latest
-    needs: [publish-crate, build-binaries]
-    if: always() && needs.build-binaries.result == 'success'
+    needs: [verify, binaries, publish-crate]
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
+          pattern: showme-*
           path: artifacts
-
-      - name: Generate changelog
-        id: changelog
-        run: |
-          # Get the previous tag
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-
-          # Generate changelog from commit history
-          if [ -z "$PREV_TAG" ]; then
-            CHANGELOG=$(git log --pretty=format:"- %s (%h)" ${GITHUB_REF_NAME})
-          else
-            CHANGELOG=$(git log --pretty=format:"- %s (%h)" ${PREV_TAG}..${GITHUB_REF_NAME})
-          fi
-
-          # Save to file for multiline handling
-          echo "## Changelog" > changelog.md
-          echo "" >> changelog.md
-          echo "$CHANGELOG" >> changelog.md
-          echo "" >> changelog.md
-          echo "## Platform Compatibility" >> changelog.md
-          echo "" >> changelog.md
-          echo "Pre-built binaries have different feature support depending on the platform:" >> changelog.md
-          echo "" >> changelog.md
-          echo "| Platform | Video Support | Sixel | All Other Features* |" >> changelog.md
-          echo "|----------|---------------|-------|---------------------|" >> changelog.md
-          echo "| **Linux x86_64** | ✅ Yes | ✅ Yes (optional) | ✅ Yes |" >> changelog.md
-          echo "| **Linux ARM64** | ❌ No† | ❌ No | ✅ Yes |" >> changelog.md
-          echo "| **macOS x86_64 (Intel)** | ✅ Yes | ❌ No | ✅ Yes |" >> changelog.md
-          echo "| **macOS ARM64 (Apple Silicon)** | ✅ Yes | ❌ No | ✅ Yes |" >> changelog.md
-          echo "| **Windows x86_64** | ❌ No‡ | ❌ No | ✅ Yes |" >> changelog.md
-          echo "" >> changelog.md
-          echo "*All other features include: Unicode rendering, Kitty graphics, iTerm2 images, QOI, PDF, and SVG support*" >> changelog.md
-          echo "" >> changelog.md
-          echo "† Linux ARM64: Cross-compilation constraints prevent video support. Build from source with ffmpeg for video." >> changelog.md
-          echo "‡ Windows: Build from source with vcpkg for video support." >> changelog.md
-          echo "" >> changelog.md
-          echo "## Downloads" >> changelog.md
-          echo "" >> changelog.md
-          echo "Pre-built binaries are available for the following platforms:" >> changelog.md
-          echo "" >> changelog.md
-          echo "- **Linux**: \`showme-linux-x86_64.tar.gz\`, \`showme-linux-aarch64.tar.gz\`" >> changelog.md
-          echo "- **macOS**: \`showme-macos-x86_64.tar.gz\`, \`showme-macos-aarch64.tar.gz\`" >> changelog.md
-          echo "- **Windows**: \`showme-windows-x86_64.exe.zip\`" >> changelog.md
-          echo "" >> changelog.md
-          echo "Or install via cargo:" >> changelog.md
-          echo "\`\`\`bash" >> changelog.md
-          echo "cargo install showme" >> changelog.md
-          echo "\`\`\`" >> changelog.md
-
-          # Set output
-          echo "changelog_file=changelog.md" >> $GITHUB_OUTPUT
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+          merge-multiple: true
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
-          name: ${{ github.ref_name }}
-          body_path: ${{ steps.changelog.outputs.changelog_file }}
+          generate_release_notes: true
+          body_path: docs/runtime.md
+          fail_on_unmatched_files: true
           files: |
-            artifacts/**/*.tar.gz
-            artifacts/**/*.zip
-          token: ${{ secrets.GITHUB_TOKEN }}
+            artifacts/*.tar.gz
+            artifacts/*.zip

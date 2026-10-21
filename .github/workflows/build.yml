@@ -2,142 +2,14 @@ name: Build
 
 on:
   push:
-    branches: [ master ]
+    branches: [master]
   pull_request:
-    branches: [ master ]
+    branches: [master]
+  workflow_dispatch:
 
-env:
-  CARGO_TERM_COLOR: always
+permissions:
+  contents: read
 
 jobs:
-  build:
-    name: Build ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Linux
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            artifact_name: showme
-            asset_name: showme-linux-x86_64
-
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            artifact_name: showme
-            asset_name: showme-linux-aarch64
-            cross: true
-
-          # macOS
-          - os: macos-13  # Intel runner for x86_64
-            target: x86_64-apple-darwin
-            artifact_name: showme
-            asset_name: showme-macos-x86_64
-
-          - os: macos-latest  # ARM runner for aarch64
-            target: aarch64-apple-darwin
-            artifact_name: showme
-            asset_name: showme-macos-aarch64
-
-          # Windows
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            artifact_name: showme.exe
-            asset_name: showme-windows-x86_64.exe
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Install dependencies (Ubuntu)
-        if: matrix.os == 'ubuntu-latest' && !matrix.cross
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libavcodec-dev libavformat-dev \
-                                  libavutil-dev libavfilter-dev libavdevice-dev \
-                                  libswscale-dev libswresample-dev clang
-
-      - name: Install cross-compilation tools (Linux ARM64)
-        if: matrix.cross && matrix.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-          rustup target add aarch64-unknown-linux-gnu
-
-      - name: Install dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install ffmpeg pkg-config
-
-      # Windows: Skip ffmpeg for now (complex setup)
-      # Video feature will be disabled in build step
-
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-${{ matrix.target }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Cache cargo index
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/git
-          key: ${{ runner.os }}-${{ matrix.target }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Cache cargo build
-        uses: actions/cache@v4
-        with:
-          path: target
-          key: ${{ runner.os }}-${{ matrix.target }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Build (native)
-        if: "!matrix.cross"
-        run: |
-          # Build without video feature on Windows (ffmpeg setup complex)
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cargo build --release --locked --target ${{ matrix.target }} --no-default-features --features unicode,kitty,iterm2,qoi,pdf,svg
-          else
-            cargo build --release --locked --target ${{ matrix.target }}
-          fi
-        shell: bash
-
-      - name: Build (cross)
-        if: matrix.cross
-        run: |
-          cargo install cross --git https://github.com/cross-rs/cross
-          # Build without video feature for cross-compilation (ARM64 ffmpeg not readily available)
-          cross build --release --locked --target ${{ matrix.target }} --no-default-features --features unicode,kitty,iterm2,qoi,pdf,svg
-
-      - name: Strip binary (Linux/macOS)
-        if: matrix.os != 'windows-latest' && !matrix.cross
-        run: strip target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.asset_name }}
-          path: target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
-          if-no-files-found: error
-
-  build-summary:
-    name: Build Summary
-    runs-on: ubuntu-latest
-    needs: build
-    if: always()
-
-    steps:
-      - name: Check build results
-        run: |
-          if [ "${{ needs.build.result }}" != "success" ]; then
-            echo "::error::One or more builds failed"
-            exit 1
-          fi
-          echo "All builds completed successfully!"
+  artifacts:
+    uses: ./.github/workflows/artifacts.yml

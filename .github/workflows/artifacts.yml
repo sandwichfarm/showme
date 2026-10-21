@@ -1,0 +1,125 @@
+name: Binary artifacts
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Package ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            features: unicode,kitty,iterm2,qoi,pdf,svg,video
+            asset: showme-linux-x86_64
+            binary: showme
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            features: unicode,kitty,iterm2,qoi,pdf,svg
+            asset: showme-linux-aarch64
+            binary: showme
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            features: unicode,kitty,iterm2,qoi,pdf,svg,video
+            asset: showme-macos-x86_64
+            binary: showme
+          - os: macos-15
+            target: aarch64-apple-darwin
+            features: unicode,kitty,iterm2,qoi,pdf,svg,video
+            asset: showme-macos-aarch64
+            binary: showme
+          - os: windows-2025
+            target: x86_64-pc-windows-msvc
+            features: unicode,kitty,iterm2,qoi,pdf,svg
+            asset: showme-windows-x86_64.exe
+            binary: showme.exe
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          target: ${{ matrix.target }}
+          features: ${{ matrix.features }}
+      - name: Build advertised features
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
+          BUILD_FEATURES: ${{ matrix.features }}
+        run: cargo build --release --locked --target "$BUILD_TARGET" --no-default-features --features "$BUILD_FEATURES"
+      - name: Package runtime and licenses
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
+          BUILD_BINARY: ${{ matrix.binary }}
+          BUILD_ASSET: ${{ matrix.asset }}
+        run: python3 scripts/package_binary.py --binary "target/$BUILD_TARGET/release/$BUILD_BINARY" --asset "$BUILD_ASSET"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.asset }}
+          path: |
+            dist/${{ matrix.asset }}.tar.gz
+            dist/${{ matrix.asset }}.zip
+          if-no-files-found: error
+
+  runtime:
+    name: Clean runtime ${{ matrix.asset }}
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            asset: showme-linux-x86_64
+            archive: showme-linux-x86_64.tar.gz
+            video: 'true'
+          - os: ubuntu-24.04-arm
+            asset: showme-linux-aarch64
+            archive: showme-linux-aarch64.tar.gz
+            video: 'false'
+          - os: macos-15-intel
+            asset: showme-macos-x86_64
+            archive: showme-macos-x86_64.tar.gz
+            video: 'true'
+          - os: macos-15
+            asset: showme-macos-aarch64
+            archive: showme-macos-aarch64.tar.gz
+            video: 'true'
+          - os: windows-2025
+            asset: showme-windows-x86_64.exe
+            archive: showme-windows-x86_64.exe.zip
+            video: 'false'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ matrix.asset }}
+          path: dist
+      - name: Linux FFmpeg runtime
+        if: runner.os == 'Linux' && matrix.video == 'true'
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: macOS FFmpeg runtime
+        if: runner.os == 'macOS' && matrix.video == 'true'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        run: brew install ffmpeg
+      # No Rust installation, Cargo target cache, or development-library setup.
+      - name: Real image, PDF, and supported video previews
+        env:
+          RUNTIME_ARCHIVE: ${{ matrix.archive }}
+          RUNTIME_VIDEO: ${{ matrix.video }}
+        run: python3 scripts/smoke_binary.py --archive "dist/$RUNTIME_ARCHIVE" --video "$RUNTIME_VIDEO"
