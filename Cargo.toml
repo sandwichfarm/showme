@@ -40,7 +40,7 @@ crossterm = "0.29"
 ctrlc = "3.5.2"
 # 1.0.0 introduces zip 0.6.6, affected by RUSTSEC-2026-0367/0368/0369.
 # Retain the ZIP-free implementation until upstream updates its ZIP dependency.
-figlet-rs = "=0.1.5"
+figlet-rs = "=1.0.0"
 kamadak-exif = "0.6"
 image = { version = "0.25", default-features = false, features = [
     "bmp",
