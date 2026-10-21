@@ -10,8 +10,8 @@ archives. Video is included for Linux x86_64 and macOS Intel/ARM64. The Linux
 ARM64 and Windows archives omit video.
 
 Video-enabled binaries dynamically link FFmpeg. Install compatible FFmpeg
-runtime libraries before launching them: `sudo apt-get install ffmpeg` on the
-Ubuntu version used to build the Linux archive, or `brew install ffmpeg` on
+runtime libraries before launching them: `sudo apt-get install ffmpeg` on
+Ubuntu 24.04 (the Linux archive's build platform), or `brew install ffmpeg` on
 macOS. A different FFmpeg ABI may require rebuilding showme from source. The
 release CI runs a real video and PDF preview from the archive on a separate
 runner with runtime dependencies provisioned.

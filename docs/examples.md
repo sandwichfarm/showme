@@ -229,7 +229,7 @@ showme image.png -o rendered.ans
 
 **Performance tuning:**
 ```bash
-# Use 8 threads for parallel loading
+# Make 8 Rayon workers available to image decoders
 showme --threads 8 gallery/*.jpg
 
 # Adjust compression level (1-9, higher = more compression)
@@ -522,7 +522,7 @@ fn process_screenshot(input: &str, output: &str) -> showme::Result<()> {
 
 ### Performance
 
-- Use `--threads` to control parallelism for large batches
+- Use `--threads` to set the Rayon pool size for decoders; inputs load sequentially
 - Set `max_frames` when only previewing animations/videos
 - Use `quiet: true` in library mode to suppress output
 - Consider `compress_level` for large images in graphics protocols

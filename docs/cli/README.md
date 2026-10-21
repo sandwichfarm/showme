@@ -120,7 +120,7 @@ showme [OPTIONS] <PATH>...
 | Flag | Description |
 |------|-------------|
 | `-o, --output <FILE>` | Write to file instead of stdout. |
-| `--threads <N>` | Number of threads for parallel loading. |
+| `--threads <N>` | Rayon worker count available to image decoders; inputs load sequentially. |
 | `--compress <LEVEL>` | PNG compression level (0-9, default 1). |
 | `-I, --force-image` | Force image interpretation (disable video). |
 

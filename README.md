@@ -212,13 +212,13 @@ the limits fail with an explicit error.
 
 ### Adding the Dependency
 
-Add to your `Cargo.toml`:
+These examples describe the current checkout's API. Add the local checkout to
+your `Cargo.toml` (`clap` is needed by examples that call `Cli::parse()`):
 
 ```toml
 [dependencies]
-showme = { git = "https://github.com/sandwichfarm/showme" }
-# Or when published to crates.io:
-# showme = "0.1"
+showme = { path = "../showme" }
+clap = "4"
 ```
 
 ### Basic Usage

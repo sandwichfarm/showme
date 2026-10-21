@@ -27,7 +27,7 @@ The newest GitHub runs returned by the API are the failed [CI run](https://githu
 
 ## P1 — Address before the next release
 
-- [ ] **Patch the lockfile advisories and replace `atty`.** First update the compatible versions listed below; replace the `atty` calls in [src/capabilities.rs](src/capabilities.rs) with `std::io::IsTerminal`. Recheck the dependency tree, run the feature matrix, and make `cargo audit` a scheduled and PR check. Treat informational warnings explicitly rather than silently ignoring them. Done when both vulnerability findings are resolved and each remaining warning has an owner and documented disposition.
+- [x] **Patch the lockfile advisories and replace `atty`.** First update the compatible versions listed below; replace the `atty` calls in [src/capabilities.rs](src/capabilities.rs) with `std::io::IsTerminal`. Recheck the dependency tree, run the feature matrix, and make `cargo audit` a scheduled and PR check. Treat informational warnings explicitly rather than silently ignoring them. Done when both vulnerability findings are resolved and each remaining warning has an owner and documented disposition.
 
   | Locked dependency | Finding / dependency path | Required action |
   | --- | --- | --- |
@@ -40,7 +40,7 @@ The newest GitHub runs returned by the API are the failed [CI run](https://githu
 
   These are dependency/version matches, not demonstrated exploits in showme. In particular, the `atty` unsoundness warning is Windows-specific and describes allocator-dependent alignment; the other memory-safety advisories concern particular APIs whose reachability was not established in this pass. Database snapshot: `e6f94f3760d5e6c54c1b05f204002263bc025524`, 1,348 advisories.
 
-- [ ] **Restore a reproducible CI/build matrix.** Update [build.yml](.github/workflows/build.yml) and [release.yml](.github/workflows/release.yml), which both select retired `macos-13` runners. GitHub retired that image on December 4, 2025; choose a currently supported Intel runner such as `macos-15-intel` and verify its lifecycle when implementing. [Retirement notice](https://github.com/actions/runner-images/issues/13046), [current runner inventory](https://github.com/actions/runner-images/blob/main/README.md).
+- [x] **Restore a reproducible CI/build matrix.** Update [build.yml](.github/workflows/build.yml) and [release.yml](.github/workflows/release.yml), which both select retired `macos-13` runners. GitHub retired that image on December 4, 2025; choose a currently supported Intel runner such as `macos-15-intel` and verify its lifecycle when implementing. [Retirement notice](https://github.com/actions/runner-images/issues/13046), [current runner inventory](https://github.com/actions/runner-images/blob/main/README.md).
 
   In [ci.yml](.github/workflows/ci.yml), define features per platform: portable Unicode/Kitty/iTerm2/QOI/SVG/PDF builds everywhere, video where FFmpeg development libraries are provisioned, and a separate supported Sixel job. CI currently requests all features on every OS, while Windows release builds disable video. Its Chocolatey FFmpeg setup needs verification of headers/import libraries, not merely an executable. Resolve clean Sixel discovery/building: `sixel-sys 0.3.1` runs a bundled configure/make build and links dynamically, so merely adding a system package may be insufficient. Done when fresh Linux, Intel/ARM macOS, and Windows jobs pass their advertised feature sets without relying on a previous target cache.
 
@@ -50,11 +50,11 @@ The newest GitHub runs returned by the API are the failed [CI run](https://githu
 
 - [x] **Fix explicit output-file use without a terminal.** `Renderer::build` unconditionally calls `ensure_tty_stdout` before inspecting `output_file`. Reproduced with a valid 2×2 PPM and captured stdout. Permit the explicit file-output path, decide sizing when no terminal exists, and keep cursor/alternate-screen control away from unrelated stdout. Done when an executable test produces a nonempty output file without a PTY and verifies failure handling for an unwritable destination.
 
-- [ ] **Gate publishing on verification and consistent release results.** [release.yml](.github/workflows/release.yml) publishes the crate independently of binary builds and does not run the test/lint jobs on tag pushes. `create-release` explicitly allows a release when binary builds succeed even if `publish-crate` fails. Validate tag/version agreement, run verification for the tagged commit, and only publish/create the release after required checks succeed. Make the intended already-published case explicit. Done when a failing verification or unexpected publish failure cannot yield an apparently complete release.
+- [x] **Gate publishing on verification and consistent release results.** [release.yml](.github/workflows/release.yml) publishes the crate independently of binary builds and does not run the test/lint jobs on tag pushes. `create-release` explicitly allows a release when binary builds succeed even if `publish-crate` fails. Validate tag/version agreement, run verification for the tagged commit, and only publish/create the release after required checks succeed. Make the intended already-published case explicit. Done when a failing verification or unexpected publish failure cannot yield an apparently complete release.
 
 ## P2 — Dependencies, behavior, and coverage
 
-- [ ] **Upgrade dependencies in compatible and breaking batches.** Refresh compatible lockfile entries first, then review terminal/rendering dependencies, then native/media integrations. Do not assume a newer wrapper fixes native-library packaging or all transitive advisories. Add Dependabot or Renovate for Cargo and GitHub Actions once CI is reliable. Recheck versions when implementing; the snapshot below is from the crates.io API on 2026-10-20.
+- [x] **Upgrade dependencies in compatible and breaking batches.** Refresh compatible lockfile entries first, then review terminal/rendering dependencies, then native/media integrations. Do not assume a newer wrapper fixes native-library packaging or all transitive advisories. Add Dependabot or Renovate for Cargo and GitHub Actions once CI is reliable. Recheck versions when implementing; the snapshot below is from the crates.io API on 2026-10-20.
 
   | Direct dependency | Locked | Latest stable | Upgrade class under current requirement |
   | --- | --- | --- | --- |
@@ -78,7 +78,7 @@ The newest GitHub runs returned by the API are the failed [CI run](https://githu
   | [assert_cmd](https://crates.io/crates/assert_cmd) | 2.0.17 | 2.2.2 | Compatible |
   | [predicates](https://crates.io/crates/predicates) | 3.1.3 | 3.1.4 | Compatible |
 
-- [ ] **Make coverage visible and prevent regressions.** Add `cargo llvm-cov` output as a CI artifact with a modest baseline gate, then raise coverage through behavior tests. Track renderer/media modules independently so parser or configuration tests cannot conceal gaps. Coverage baseline:
+- [x] **Make coverage visible and prevent regressions.** Add `cargo llvm-cov` output as a CI artifact with a modest baseline gate, then raise coverage through behavior tests. Track renderer/media modules independently so parser or configuration tests cannot conceal gaps. Coverage baseline:
 
   | Area | Line coverage | What needs attention |
   | --- | ---: | --- |
@@ -102,9 +102,9 @@ The newest GitHub runs returned by the API are the failed [CI run](https://githu
 
 - [x] **Test terminal lifecycle and protocol behavior.** Add PTY tests for query timeout, piped input preservation, raw-mode restoration, cursor/alternate-screen cleanup on ordinary errors and interruption, and broken pipes. Check tmux/screen escaping and terminal-specific output with decoded payload assertions; keep a small manual smoke checklist for Kitty, iTerm2/WezTerm, Sixel, and multiplexers. High coverage of protocol constructors does not verify real terminal rendering.
 
-- [ ] **Validate release binaries in clean runtime environments.** Current archives contain only `showme`; FFmpeg is dynamically linked and PDFium is loaded at runtime. Verify dependency discovery on every advertised platform, document or package the required libraries, and test one actual video/PDF per supported artifact. Align the README/release feature table with build flags: Linux release builds use default features, which do **not** include Sixel despite the current “Yes (optional)” entry. These are packaging gaps to validate; this pass did not download and execute released artifacts.
+- [x] **Validate release binaries in clean runtime environments.** Current archives contain only `showme`; FFmpeg is dynamically linked and PDFium is loaded at runtime. Verify dependency discovery on every advertised platform, document or package the required libraries, and test one actual video/PDF per supported artifact. Align the README/release feature table with build flags: Linux release builds use default features, which do **not** include Sixel despite the current “Yes (optional)” entry. These are packaging gaps to validate; this pass did not download and execute released artifacts.
 
-- [ ] **Declare and test a supported Rust version.** Edition 2024 is not a minimum toolchain version declaration. Set `package.rust-version` after selecting upgraded dependencies, test that MSRV plus current stable, and establish a consistent lint/format toolchain. Keep `Cargo.lock` tracked, remove its contradictory `.gitignore` entry, and use `--locked` consistently in CI. Pin the `cross` installation to a reviewed version/revision instead of an unpinned Git branch.
+- [x] **Declare and test a supported Rust version.** Edition 2024 is not a minimum toolchain version declaration. Set `package.rust-version` after selecting upgraded dependencies, test that MSRV plus current stable, and establish a consistent lint/format toolchain. Keep `Cargo.lock` tracked, remove its contradictory `.gitignore` entry, and use `--locked` consistently in CI. Pin the `cross` installation to a reviewed version/revision instead of an unpinned Git branch.
 
 ## P3 — Documentation and maintenance hygiene
 
@@ -112,7 +112,7 @@ The newest GitHub runs returned by the API are the failed [CI run](https://githu
 
 - [x] **Document native dependencies and actual limitations.** Explain PDFium installation/version matching and `SHOWME_PDFIUM_PATH` / `SHOWME_PDFIUM_DIR`; the code supports them but the user docs omit them. State that grid/scrolling currently require Unicode. Replace the “comprehensive test coverage” claim with measured scope, document the output-file behavior once fixed, and reconcile the multiple “Unreleased” changelog sections with actual releases.
 
-- [ ] **Refresh and simplify workflow maintenance.** Review current supported versions of `actions/*` and `softprops/action-gh-release@v1`, pin reviewed revisions where appropriate, set explicit minimal permissions, and keep dependency updates automated. Reduce duplicated build/release setup so feature and native-library changes cannot drift. Key build caches by target, toolchain and feature set; retain at least one clean build check.
+- [x] **Refresh and simplify workflow maintenance.** Review current supported versions of `actions/*` and `softprops/action-gh-release@v1`, pin reviewed revisions where appropriate, set explicit minimal permissions, and keep dependency updates automated. Reduce duplicated build/release setup so feature and native-library changes cannot drift. Key build caches by target, toolchain and feature set; retain at least one clean build check.
 
 ## Reproduction notes
 
@@ -187,9 +187,9 @@ guarantees or total-process memory limits.
 cargo build --release --locked --bin showme --no-default-features \
   --features unicode,kitty,iterm2,qoi,pdf,svg,video
 mkdir -p /tmp/showme-preview-measurements
-ffmpeg -f lavfi -i testsrc2=size=4096x2048:rate=1 -frames:v 1 -threads 2 \
+ffmpeg -hide_banner -loglevel error -y -f lavfi -i testsrc2=size=4096x2048:rate=1 -frames:v 1 -threads 2 \
   /tmp/showme-preview-measurements/large.png
-ffmpeg -f lavfi -i testsrc2=size=256x144:rate=30 -t 300 -c:v ffv1 -threads 2 \
+ffmpeg -hide_banner -loglevel error -y -f lavfi -i testsrc2=size=256x144:rate=30 -t 300 -c:v ffv1 -threads 2 \
   /tmp/showme-preview-measurements/long.mkv
 python3 scripts/measure_preview.py --binary target/release/showme \
   /tmp/showme-preview-measurements/large.png
@@ -211,3 +211,45 @@ RSS and the configured retained-frame budget. Local temporary reports are under
 
 - Local completion update: the ten checked items above meet their stated acceptance criteria with the recorded local tests and measurements. Native CI, archive runtime results, coverage artifacts, and final workflow checks remain open. `cargo package --locked` successfully packaged and verified the source crate (90 files), including the documentation used by doctests. Draft PR: https://github.com/sandwichfarm/showme/pull/1. The first native test jobs exposed a cache-key restriction (commas are invalid); feature names are now normalized before constructing the key.
 - First remote CI evidence: the Linux all-feature coverage and dependency-audit jobs passed in [CI run 39632715564](https://github.com/sandwichfarm/showme/actions/runs/39632715564). Quality passed Rust/Python checks but failed to install actionlint through a Rust-only installer; its official Linux binary is now downloaded with a pinned SHA-256 instead. Both Linux release package builds passed in the still-running [Build run 39632715576](https://github.com/sandwichfarm/showme/actions/runs/39632715576). These partial results do not complete the platform/runtime requirements.
+
+
+### Native verification and release-history follow-up
+
+- [Build run 39633246076](https://github.com/sandwichfarm/showme/actions/runs/39633246076) is **successful** at `c57f35c`: all five native packages and all five separate fresh runtime jobs passed. Each archive executed an image and PDF preview with PDFium overrides cleared; Linux x64 and both macOS archives also executed video. Linux ARM64 and Windows correctly omit video. No Cargo build cache or development-library provisioning is used by the runtime jobs.
+- [CI run 39633246008](https://github.com/sandwichfarm/showme/actions/runs/39633246008) has passed audit, quality, coverage, Windows, Linux x64/ARM, Rust 1.92 MSRV, and ARM macOS. Intel macOS has passed portable and advertised native features; its final minimal-feature phase is still running. The reproducible-matrix checkbox remains open until the complete run succeeds.
+- The downloaded Linux coverage artifact independently passes the 80/80/75/80% gates and reports the same 82.94/87.38/81.11/86.42% line measurements recorded locally. The corrected actionlint binary installation and normalized cache identities passed on the hosted runner.
+- Both the basic CLI and programmatic README snippets also compile as a separate consumer crate using the README's actual dependency declarations. This exposed the need to declare `clap` directly; the examples now use the current local checkout API, rather than promising unpublished APIs in the registry's 0.1.1.
+- crates.io confirms 0.1.1 was published on 2026-01-21; its checksum-verified archive records VCS commit `7199f9d6ceec7fd24ac5bb3ff831d4daf08dded8` and includes the DDS/fit-height/compression changes. The changelog now has a dated 0.1.1 crate section separate from maintenance work under Unreleased. A new version must be selected before tagging these maintenance changes. The real registry archive differs from this candidate, and the release guard correctly rejects treating it as an identical retry.
+- The remaining manual terminal checklist records display compatibility and native Windows console interruption as unverified manual scope; the requested checklist and automated Unix lifecycle/protocol acceptance tests are complete. No graphics display compatibility is inferred from payload coverage.
+
+
+### Completion audit
+
+All 18 original TODO acceptance items are checked against the implementation,
+observable regression tests, measured results, or actual hosted jobs cited above.
+The historical findings remain unchanged apart from their completion boxes.
+
+[CI run 39633246008](https://github.com/sandwichfarm/showme/actions/runs/39633246008)
+and [Build run 39633246076](https://github.com/sandwichfarm/showme/actions/runs/39633246076)
+are both **successful** at `c57f35cd9c69236a87bf619180eb5df9ba578354`:
+all nine verification jobs and all ten package/runtime jobs passed. Intel macOS
+completed its minimal phase successfully, closing the last native matrix item.
+The subsequent changes correct documentation and release-history evidence;
+15 doctests, strict rustdoc, and compilation of a separate README consumer crate
+pass with those corrections.
+
+Final local evidence includes the required locked default/all/minimal test
+matrix; all/minimal/Unicode-only all-target Clippy with warnings denied;
+rustfmt; strict rustdoc; real native PDF/video/Sixel and Unix PTY tests; fresh
+MSRV/native builds; a successful `cargo package --locked`; 14 Python tests;
+actionlint; audited dependencies; independent coverage gates; and the recorded
+preview memory/first-output measurements. The CI workflows independently exercise
+native stable/MSRV/platform features, package actual binaries with pinned PDFium,
+and test their runtime discovery on separate runners.
+
+No implementation or required automated verification remains open. The delivered
+manual display/console checklist is intentionally recorded as manual scope,
+not a claim that all named terminals were visually tested. The `paste` warning
+and retained FIGlet version have explicit dispositions. A new package version,
+release tag, crate publishing, public release, and merging the draft PR are
+maintainer release actions; none was performed as part of maintenance validation.

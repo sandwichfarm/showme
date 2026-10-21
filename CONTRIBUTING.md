@@ -275,6 +275,10 @@ pub fn load_image(path: &Path, mode: RotationMode, auto_crop: bool, crop_border:
 
 Releases are automated via GitHub Actions:
 
+Version 0.1.1 is already published on crates.io. Select a new version for these
+maintenance changes; retrying an existing version succeeds only when all
+packaged files match the registry archive (apart from VCS provenance).
+
 1. Update `CHANGELOG.md` with release notes
 2. Update version in `Cargo.toml`
 3. Create and push a git tag:

@@ -9,6 +9,7 @@ Add the crate to a Cargo project directly from the local checkout:
 ```toml
 [dependencies]
 showme = { path = "../showme", features = ["kitty", "iterm2"] }
+clap = "4" # Needed by the Cli::parse() example.
 # Or from git:
 # showme = { git = "https://github.com/sandwichfarm/showme", features = ["kitty", "iterm2"] }
 ```
@@ -34,7 +35,7 @@ The crate is split into cooperating modules:
 
 - `cli`: Clap-based argument parser. Produces a `Config` struct that the renderer understands.
 - `config`: Types describing user intent (backend, sizing, grid layout, timing, transparency handling).
-- `renderer`: Orchestrates backend selection, terminal capability probing, image loading (using Rayon for parallelism), and output pacing.
+- `renderer`: Orchestrates backend selection, terminal capability probing, sequential input loading, and output pacing. Decoder work runs in the configured Rayon pool.
 - `backend`: Trait (`Backend`) plus concrete implementations (`UnicodeBackend`, `KittyBackend`, `ITerm2Backend`, optional `SixelBackend`). Helpers for chunking, scaling, and background blending.
 - `image`: Loader supporting multiple formats (static images, GIF, QOI, PDF, SVG, video). Produces `ImageSequence` values containing decoded frames and playback delays.
 - `video`: Video decoder using ffmpeg (feature-gated).
@@ -152,9 +153,9 @@ Key types:
 
 Responsibilities:
 
-- Picks a backend (respecting feature availability) and falls back to unicode if the requested backend isn't compiled in.
+- Auto selection chooses an available backend; explicitly requesting a backend that was not compiled in returns an error.
 - Records the terminal size at startup. Unicode and grid rendering rely on this to scale correctly.
-- Loads images in parallel with Rayon. Thread pool can be configured via `Config::threads`.
+- Loads inputs sequentially to bound retained media. `Config::threads` configures the Rayon pool available to decoders.
 - `image::load_image` handles multiple formats and returns `ImageSequence` with decoded frames.
 - Handles playback pacing: `--loop`, `--loops`, `--wait`, frame delays, duration limits.
 - Provides title formatting (`%f`, `%b`, `%w`, `%h`, `%n`, `%%`).
@@ -236,7 +237,7 @@ Responsibilities:
 
 ## 6. Performance considerations
 
-- **Parallel loading**: Images are loaded in parallel using Rayon. Configure thread count with `Config::threads`.
+- **Decoder parallelism**: Configure the Rayon worker pool with `Config::threads`. Inputs are loaded sequentially rather than preloaded as an entire batch.
 - **Compression level**: PNG compression for Kitty/iTerm2 backends can be adjusted (0-9) via `Config::compress_level`.
 - **Antialiasing**: Lanczos3 filter for high-quality scaling, or Nearest for pixel-perfect integer upscaling.
 - **8-bit color mode**: Reduces output size by using xterm-256 palette instead of 24-bit RGB.

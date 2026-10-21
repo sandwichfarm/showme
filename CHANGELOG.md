@@ -5,8 +5,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-The manifest's 0.1.1 is a development version. No 0.1.1 GitHub release or local
-tag was present when the release history was checked on 2026-10-21.
+These maintenance changes follow the published 0.1.1 crate. The manifest still
+contains that version; select a new version before tagging the next release.
 
 ### Added
 
@@ -16,9 +16,6 @@ tag was present when the release history was checked on 2026-10-21.
 - Scheduled and PR dependency audits, independent renderer/media coverage gates,
   a platform-specific CI matrix, and packaged-binary runtime smoke jobs.
 - Checksum-pinned PDFium 7881 provisioning and runtime/license packaging.
-- Existing 0.1.1 development features: DDS decoding, Unicode fit-to-height,
-  configurable PNG compression, integer scaling and antialias fixes, and
-  improved PDFium discovery.
 
 ### Changed
 
@@ -51,10 +48,25 @@ tag was present when the release history was checked on 2026-10-21.
 - README library snippets, Cargo command selection, native-library documentation,
   and unsupported release-feature claims.
 
+## [0.1.1] - 2026-01-21
+
+Published on [crates.io](https://crates.io/crates/showme/0.1.1) from commit
+`7199f9d6ceec7fd24ac5bb3ff831d4daf08dded8`. No corresponding GitHub release or
+tag was present when checked on 2026-10-21.
+
+### Added
+
+- DDS decoding, Unicode fit-to-height, and configurable PNG compression.
+
+### Fixed
+
+- Unicode integer scaling and antialias handling, and improved PDFium discovery.
+
 ## [0.1.0] - 2025-10-25
 
 Initial Rust release, published as
 [v0.1.0](https://github.com/sandwichfarm/showme/releases/tag/v0.1.0).
 
-[Unreleased]: https://github.com/sandwichfarm/showme/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/sandwichfarm/showme/compare/7199f9d6ceec7fd24ac5bb3ff831d4daf08dded8...HEAD
+[0.1.1]: https://crates.io/crates/showme/0.1.1
 [0.1.0]: https://github.com/sandwichfarm/showme/releases/tag/v0.1.0
