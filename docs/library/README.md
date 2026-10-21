@@ -24,7 +24,7 @@ Feature flags:
 | `qoi` | ✅ | Enables QOI image format support. |
 | `pdf` | ✅ | Enables PDF rendering support. |
 | `svg` | ✅ | Enables SVG/SVGZ rendering support. |
-| `sixel` | ⛔️ | Optional Sixel backend implemented via `libsixel`. Requires the native library. |
+| `sixel` | ⛔️ | Optional Sixel backend implemented via `libsixel`. Builds bundled static libsixel; requires Autotools and a C compiler. |
 
 Disable default features with `--no-default-features` or by enumerating only the features you want.
 
@@ -48,7 +48,8 @@ The typical flow is `Cli::parse() → Cli::into_config() → Renderer::build(con
 
 ## 3. Example: embedding the renderer
 
-```rust
+```rust,no_run
+use clap::Parser;
 use showme::{Cli, Renderer};
 
 fn main() -> showme::Result<()> {
@@ -62,7 +63,8 @@ fn main() -> showme::Result<()> {
 
 When integrating into a larger app you can bypass `Cli` entirely:
 
-```rust
+```rust,no_run
+# fn main() -> showme::Result<()> {
 use std::num::NonZeroUsize;
 use showme::{BackendKind, Config, GridOptions, RenderSizing, Renderer};
 
@@ -119,9 +121,11 @@ let config = Config {
 };
 
 Renderer::build(config)?.run()?;
+# Ok(())
+# }
 ```
 
-> **TTY requirement**: `Renderer::build` calls `ensure_tty_stdout()`. If your application wants to render into an off-screen buffer, you must provide an alternative backend implementation that skips this guard.
+> **Output destination**: stdout rendering requires a terminal. Set `Config::output_file` for headless file output; this uses deterministic geometry and skips terminal setup on stdout. `Config::default()` provides deterministic library defaults, and a caller can attach an atomic cancellation flag with `Renderer::with_cancellation`.
 
 ## 4. Module details
 
@@ -167,7 +171,7 @@ Responsibilities:
 - `BackgroundStyle` is computed from the config: optional solid color plus optional checkerboard color/size.
 - `UnicodeBackend`: Rasterizes using half-block or quarter-block characters with 24-bit or 8-bit ANSI colors. Supports checkerboard transparency.
 - `KittyBackend`: PNG-encodes the frame, emits Kitty escape sequences in base64 chunks with DCS passthrough for tmux.
-- `ITerm2Backend`: Uses OSC 1337 protocol, streaming base64 PNG chunks with inline metadata.
+- `ITerm2Backend`: Emits complete OSC 1337 `File` payloads, or documented iTerm2 3.5+ multipart framing above the transport limit. Large transfers require terminal support for that extension.
 - `SixelBackend` *(feature-gated)*: Uses `libsixel` to encode frames with dithering.
 - `chunk_util`: Encodes data once and provides reusable base64 chunks to reduce allocations.
 - `image_util`: Handles resizing (Lanczos3/Nearest filter), background blending, PNG encoding.

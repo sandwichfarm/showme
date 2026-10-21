@@ -34,7 +34,7 @@ This project follows standard open source community guidelines. Please be respec
 
 ### Requirements
 
-- Rust 2024 edition (latest stable recommended)
+- Rust 1.92 minimum; pinned Rust 1.98.1 development tools (edition 2024)
 - For video support: ffmpeg development libraries
   ```bash
   # Ubuntu/Debian
@@ -49,14 +49,19 @@ This project follows standard open source community guidelines. Please be respec
   sudo pacman -S ffmpeg clang pkg-config
   ```
 
-- For Sixel support (optional):
+- For Sixel support (optional), the bundled static libsixel needs Autotools:
   ```bash
   # Ubuntu/Debian
-  sudo apt install libsixel-dev
+  sudo apt install autoconf automake libtool make gcc
 
   # macOS
-  brew install libsixel
+  brew install autoconf automake libtool
   ```
+
+PDF tests require the matching PDFium 7881 runtime. Use `scripts/fetch_pdfium.py`
+with the platform from [README.md](README.md), set `SHOWME_PDFIUM_DIR`, and include
+ignored runtime tests with `cargo test --locked --all-features -- --include-ignored`.
+The Unix terminal lifecycle tests also require Python 3 and terminal-device access.
 
 ### Building
 
@@ -114,9 +119,9 @@ Examples:
 cargo test
 
 # Run specific test module
-cargo test config_tests
-cargo test rendering_tests
-cargo test capabilities_tests
+cargo test --locked --test config_tests
+cargo test --locked --test rendering_tests
+cargo test --locked --test capabilities_tests
 
 # Run tests with output
 cargo test -- --nocapture
@@ -256,8 +261,8 @@ pub fn load_image(path: &Path) -> Result<ImageSequence> {
 /// # Examples
 ///
 /// ```
-/// use terminal_media::image::load_image;
-/// use terminal_media::config::RotationMode;
+/// use showme::image::load_image;
+/// use showme::config::RotationMode;
 ///
 /// let seq = load_image(Path::new("photo.jpg"), RotationMode::Exif, false, 0)?;
 /// ```
@@ -278,10 +283,11 @@ Releases are automated via GitHub Actions:
    git push upstream v0.2.0
    ```
 4. GitHub Actions will:
-   - Build release binary
-   - Publish to crates.io
-   - Create GitHub release
-   - Generate changelog from commits
+   - Check tag/version agreement and verify the tagged commit
+   - Build each advertised feature set and package its PDFium runtime/licenses
+   - Run actual image/PDF/video previews from archives on fresh runners
+   - Publish the crate, or verify that an already-published package is identical
+   - Create a GitHub release only after all required jobs succeed
 
 ## Areas for Contribution
 

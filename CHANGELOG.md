@@ -1,91 +1,60 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
+and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+The manifest's 0.1.1 is a development version. No 0.1.1 GitHub release or local
+tag was present when the release history was checked on 2026-10-21.
+
 ### Added
-- Initial release of showme
-- Multiple rendering backends:
-  - Unicode half-block and quarter-block renderers with 24-bit color
-  - Kitty graphics protocol backend
-  - iTerm2 inline image backend (OSC 1337)
-  - Optional Sixel graphics backend
-  - Automatic backend detection with multiplexer support (tmux/screen)
-- Wide format support:
-  - Image formats: PNG, JPEG, GIF, BMP, WebP, TIFF, EXR, TGA, DDS, HDR, ICO, PNM, QOI
-  - Video formats: MP4, MKV, MOV, AVI, WebM via ffmpeg
-  - Document formats: PDF with multi-page support
-  - Vector formats: SVG, SVGZ
-- Flexible sizing options:
-  - Automatic terminal size detection
-  - Manual width/height constraints
-  - Fit-to-width and fit-to-height modes
-  - Upscaling with integer scaling support
-  - EXIF orientation support for phone photos
-  - Auto-crop to remove uniform borders
-  - Fixed border cropping
-- Display features:
-  - Grid layout with configurable spacing
-  - Image centering
-  - Scroll animation for large images
-  - Timed slideshows
-  - Title format strings
-  - Alternate screen buffer support
-  - Cursor hiding control
-  - 8-bit color mode for older terminals
-- Animation support:
-  - Animated GIF playback
-  - Video playback with frame-accurate controls
-  - Loop control (infinite or specific count)
-  - Frame selection and offset
-  - Time-based duration limits
-- Performance:
-  - Parallel image loading using Rayon
-  - Configurable thread pool
-  - Compression level control
-- Library API:
-  - Clean Rust API for integration
-  - Programmatic configuration without CLI parsing
-  - Direct image loading functions
-  - Comprehensive examples
-- Testing:
-  - 34+ library tests
-  - Integration tests
-  - Configuration parsing tests
-  - EXIF rotation tests
-  - Terminal detection tests
-  - Auto-crop tests
+
+- Deterministic `Config::default()` for library callers and compiled extended documentation examples.
+- Actual renderer, CLI output, decoder pixel/timing, protocol payload, and Unix
+  PTY lifecycle regression tests with small synthetic media fixtures.
+- Scheduled and PR dependency audits, independent renderer/media coverage gates,
+  a platform-specific CI matrix, and packaged-binary runtime smoke jobs.
+- Checksum-pinned PDFium 7881 provisioning and runtime/license packaging.
+- Existing 0.1.1 development features: DDS decoding, Unicode fit-to-height,
+  configurable PNG compression, integer scaling and antialias fixes, and
+  improved PDFium discovery.
 
 ### Changed
-- Complete rewrite from C++ (timg) to Rust
-- Improved error handling with thiserror
-- Better terminal capability detection
-- Enhanced multiplexer support with automatic DCS passthrough
 
-### Removed
-- Legacy C++ codebase
-- CMake build system
-
-## [0.1.1] - Unreleased
-
-### Added
-- DDS image decoding support
-- `--fit-height` support for Unicode rendering
-- `--compress` support for PNG-based terminals (Kitty/iTerm2)
+- Updated compatible dependencies and reviewed terminal/media APIs. Replaced
+  `atty` with the standard library and removed unused direct dependencies.
+- Upgraded the SVG/font stack, FFmpeg wrapper, PDFium bindings, and static Sixel
+  binding. Retained ZIP-free FIGlet 0.1.5 because 1.0.0 introduces vulnerable ZIP.
+- Declared Rust 1.92 minimum; pinned development formatting/linting to 1.98.1.
+- Decode/render inputs in order, release media between inputs, and stop bounded
+  previews during decoding. Added byte, dimension, frame, page, and retained-data
+  limits with explicit errors.
+- Build/release workflows share native setup and artifact generation. Tagged
+  releases require version agreement, verification, runtime checks, and successful
+  publishing. An existing crate is accepted only when its packaged files match.
 
 ### Fixed
-- Integer scaling mode (`-U i`) for Unicode rendering
-- Unicode antialias toggle (`-a/--no-antialias`)
-- Improved PDFium discovery on macOS (supports env vars / next-to-binary)
 
-## [0.1.0] - Unreleased
+- Explicit file output without a terminal, with deterministic sizing and isolated
+  terminal controls.
+- Force-format dispatch, GIF file/stdin crop consistency, frame offsets and zero
+  limits, scrolling limits/direction, and duration-capped playback delays.
+- PDF red/blue channel order, native video stride validation, and timestamp
+  overflow handling.
+- Terminal character-cell size interpretation, unbuffered query replies, raw-mode
+  preservation, and Ctrl-C cleanup during playback waits or Unix stdin reads.
+- Graphics chunk framing/newlines, documented iTerm2 multipart transfer, and GNU
+  screen DCS escaping/size limits.
+- Non-finite/overflowing duration and sizing inputs, malformed Unicode color
+  strings, conflicting layouts, and disabled-backend errors.
+- README library snippets, Cargo command selection, native-library documentation,
+  and unsupported release-feature claims.
 
-Initial development version.
+## [0.1.0] - 2025-10-25
 
-[Unreleased]: https://github.com/sandwichfarm/showme/compare/v0.1.1...HEAD
-[0.1.1]: https://github.com/sandwichfarm/showme/compare/v0.1.0...v0.1.1
+Initial Rust release, published as
+[v0.1.0](https://github.com/sandwichfarm/showme/releases/tag/v0.1.0).
+
+[Unreleased]: https://github.com/sandwichfarm/showme/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/sandwichfarm/showme/releases/tag/v0.1.0

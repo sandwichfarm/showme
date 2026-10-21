@@ -212,7 +212,7 @@ showme -F /path/to/gallery/images.txt
 showme --scroll large-map.png
 
 # Scroll with custom movement speed
-showme --scroll --delta-move 5,2 image.png
+showme --scroll --delta-move 5:2 image.png
 
 # Scroll with custom delay
 showme --scroll --scroll-delay 100 image.png
@@ -242,11 +242,11 @@ showme --compress 4 image.png
 
 The simplest way to use showme as a library:
 
-```rust
-use terminal_media::{Cli, Renderer};
+```rust,no_run
+use showme::{Cli, Renderer};
 use clap::Parser;
 
-fn main() -> terminal_media::Result<()> {
+fn main() -> showme::Result<()> {
     // Parse CLI arguments
     let cli = Cli::parse();
 
@@ -263,13 +263,14 @@ fn main() -> terminal_media::Result<()> {
 
 Build configuration programmatically without CLI parsing:
 
-```rust
+```rust,no_run
+# fn main() -> showme::Result<()> {
 use std::path::PathBuf;
 use std::time::Duration;
-use terminal_media::{Config, Renderer, BackendKind, RenderSizing};
-use terminal_media::config::{PixelationMode, RotationMode, BackgroundColor};
+use showme::{Config, Renderer, BackendKind, RenderSizing};
+use showme::config::{PixelationMode, RotationMode, BackgroundColor};
 
-fn display_image(path: &str) -> terminal_media::Result<()> {
+fn display_image(path: &str) -> showme::Result<()> {
     let config = Config {
         inputs: vec![PathBuf::from(path)],
 
@@ -331,16 +332,20 @@ fn display_image(path: &str) -> terminal_media::Result<()> {
     let renderer = Renderer::build(config)?;
     renderer.run()
 }
+# Ok(())
+# }
 ```
 
 ### Backend Selection
 
 Choose specific rendering backends:
 
-```rust
-use terminal_media::{Config, Renderer, BackendKind};
+```rust,no_run
+# fn main() -> showme::Result<()> {
+use std::path::PathBuf;
+use showme::{Config, Renderer, BackendKind};
 
-fn render_with_backend(path: &str, backend: BackendKind) -> terminal_media::Result<()> {
+fn render_with_backend(path: &str, backend: BackendKind) -> showme::Result<()> {
     let mut config = Config::default();
     config.inputs = vec![PathBuf::from(path)];
     config.backend = backend;
@@ -354,18 +359,21 @@ fn render_with_backend(path: &str, backend: BackendKind) -> terminal_media::Resu
 render_with_backend("photo.jpg", BackendKind::Kitty)?;
 render_with_backend("photo.jpg", BackendKind::Iterm2)?;
 render_with_backend("photo.jpg", BackendKind::Unicode)?;
+# Ok(())
+# }
 ```
 
 ### Direct Image Processing
 
 Load and process images without the renderer:
 
-```rust
+```rust,no_run
+# fn main() -> showme::Result<()> {
 use std::path::Path;
-use terminal_media::image::load_image;
-use terminal_media::config::RotationMode;
+use showme::image::load_image;
+use showme::config::RotationMode;
 
-fn analyze_image(path: &str) -> terminal_media::Result<()> {
+fn analyze_image(path: &str) -> showme::Result<()> {
     let sequence = load_image(
         Path::new(path),
         RotationMode::Exif,
@@ -393,18 +401,21 @@ fn analyze_image(path: &str) -> terminal_media::Result<()> {
 
     Ok(())
 }
+# Ok(())
+# }
 ```
 
 ### Advanced Rendering
 
 Custom rendering with progress callbacks:
 
-```rust
-use std::io::{stdout, Write};
-use terminal_media::{Config, Renderer};
-use terminal_media::config::PixelationMode;
+```rust,no_run
+# fn main() -> showme::Result<()> {
+use std::path::PathBuf;
+use showme::{Config, Renderer};
+use showme::config::PixelationMode;
 
-fn render_with_progress(images: Vec<PathBuf>) -> terminal_media::Result<()> {
+fn render_with_progress(images: Vec<PathBuf>) -> showme::Result<()> {
     let mut config = Config::default();
     config.inputs = images;
     config.pixelation = PixelationMode::Quarter;
@@ -414,9 +425,10 @@ fn render_with_progress(images: Vec<PathBuf>) -> terminal_media::Result<()> {
     let renderer = Renderer::build(config)?;
 
     // Render to stdout
-    let mut out = stdout();
     renderer.run()
 }
+# Ok(())
+# }
 ```
 
 ## Use Cases
@@ -425,11 +437,12 @@ fn render_with_progress(images: Vec<PathBuf>) -> terminal_media::Result<()> {
 
 Integrate image preview in a file manager:
 
-```rust
+```rust,no_run
+# fn main() -> showme::Result<()> {
 use std::path::Path;
-use terminal_media::{Config, Renderer, BackendKind, RenderSizing};
+use showme::{Config, Renderer, BackendKind, RenderSizing};
 
-fn preview_file(path: &Path, max_width: u16, max_height: u16) -> terminal_media::Result<()> {
+fn preview_file(path: &Path, max_width: u32, max_height: u32) -> showme::Result<()> {
     // Quick preview with constraints
     let config = Config {
         inputs: vec![path.to_path_buf()],
@@ -448,25 +461,27 @@ fn preview_file(path: &Path, max_width: u16, max_height: u16) -> terminal_media:
 
     Renderer::build(config)?.run()
 }
+# Ok(())
+# }
 ```
 
 ### Image Gallery Browser
 
 Build a terminal image gallery:
 
-```rust
+```rust,no_run
+# fn main() -> showme::Result<()> {
 use std::path::PathBuf;
 use std::time::Duration;
-use terminal_media::{Config, Renderer};
+use showme::{Config, Renderer};
 
-fn gallery_slideshow(images: Vec<PathBuf>, delay: u64) -> terminal_media::Result<()> {
+fn gallery_slideshow(images: Vec<PathBuf>, delay: u64) -> showme::Result<()> {
     let config = Config {
         inputs: images,
         alternate_screen: true,
         center: true,
         wait_between_images: Some(Duration::from_secs(delay)),
-        title_format: Some("Image %n/%N - %f".to_string()),
-        loop_forever: true,
+        title_format: Some("Image %n - %b".to_string()),
         clear_between: true,
         hide_cursor: true,
         ..Config::default()
@@ -474,17 +489,20 @@ fn gallery_slideshow(images: Vec<PathBuf>, delay: u64) -> terminal_media::Result
 
     Renderer::build(config)?.run()
 }
+# Ok(())
+# }
 ```
 
 ### Documentation Screenshots
 
 Process screenshots for documentation:
 
-```rust
+```rust,no_run
+# fn main() -> showme::Result<()> {
 use std::path::PathBuf;
-use terminal_media::{Config, Renderer};
+use showme::{Config, Renderer};
 
-fn process_screenshot(input: &str, output: &str) -> terminal_media::Result<()> {
+fn process_screenshot(input: &str, output: &str) -> showme::Result<()> {
     let config = Config {
         inputs: vec![PathBuf::from(input)],
         auto_crop: true,        // Remove borders
@@ -496,6 +514,8 @@ fn process_screenshot(input: &str, output: &str) -> terminal_media::Result<()> {
 
     Renderer::build(config)?.run()
 }
+# Ok(())
+# }
 ```
 
 ## Tips and Best Practices
@@ -523,8 +543,9 @@ fn process_screenshot(input: &str, output: &str) -> terminal_media::Result<()> {
 
 ### Error Handling
 
-```rust
-use terminal_media::{Config, Renderer};
+```rust,no_run
+# fn main() -> showme::Result<()> {
+use showme::{Config, Renderer};
 
 fn safe_render(config: Config) {
     match Renderer::build(config) {
@@ -538,6 +559,8 @@ fn safe_render(config: Config) {
         }
     }
 }
+# Ok(())
+# }
 ```
 
 ## Further Reading
