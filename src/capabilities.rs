@@ -1,6 +1,6 @@
 use std::env;
 
-use atty::Stream;
+use std::io::IsTerminal;
 
 use crate::config::BackendKind;
 use crate::error::{Result, RimgError};
@@ -58,7 +58,7 @@ impl TerminalSize {
 }
 
 pub fn ensure_tty_stdout() -> Result<()> {
-    if atty::is(Stream::Stdout) {
+    if std::io::stdout().is_terminal() {
         Ok(())
     } else {
         Err(RimgError::StdoutNotTty)
@@ -72,12 +72,12 @@ fn query_terminal_pixel_size() -> Option<(u16, u16)> {
     use std::time::Duration;
 
     // Only try this if stdout is a TTY
-    if !atty::is(Stream::Stdout) {
+    if !std::io::stdout().is_terminal() {
         return None;
     }
     // If stdin is not a TTY (e.g. `cat image.png | showme -`), reading from stdin for terminal
     // replies will consume the piped image bytes and break stdin decoding.
-    if !atty::is(Stream::Stdin) {
+    if !std::io::stdin().is_terminal() {
         return None;
     }
 

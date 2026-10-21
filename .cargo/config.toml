@@ -1,0 +1,5 @@
+[env]
+# Autoconf 2.73 otherwise selects C23 for sixel-sys's bundled libsixel,
+# whose generated gperf functions use definitions removed in C23.
+# This cache answer leaves Autoconf free to select C11/C17 instead.
+ac_cv_prog_cc_c23 = "no"

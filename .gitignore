@@ -1,6 +1,5 @@
 # Rust build artifacts
 target/
-Cargo.lock
 
 # Editor files
 *~
@@ -17,3 +16,7 @@ demo-assets
 *.mp4
 *.gif
 *.jpeg
+
+# Provisioned native runtimes and Python bytecode
+.native/
+__pycache__/
