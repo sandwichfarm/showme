@@ -91,6 +91,7 @@ fn sanitize_chunk_size(chunk_size: usize) -> usize {
     }
 }
 
+#[cfg(any(feature = "kitty", test))]
 pub(crate) fn average_chunk_len(chunks: &Base64Chunks) -> usize {
     if chunks.len() == 0 {
         return 0;

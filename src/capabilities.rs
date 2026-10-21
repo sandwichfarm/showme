@@ -67,17 +67,19 @@ pub fn ensure_tty_stdout() -> Result<()> {
 
 /// Try to query terminal pixel dimensions using XTWINOPS (CSI 16 t)
 /// Returns (width_pixels, height_pixels) if supported
+#[cfg(unix)]
 fn query_terminal_pixel_size() -> Option<(u16, u16)> {
-    use std::io::{self, Read, Write};
+    use std::io::{self, Write};
+    use std::os::fd::AsRawFd;
     use std::time::Duration;
 
     // Only try this if stdout is a TTY
-    if !std::io::stdout().is_terminal() {
+    if !io::stdout().is_terminal() {
         return None;
     }
     // If stdin is not a TTY (e.g. `cat image.png | showme -`), reading from stdin for terminal
     // replies will consume the piped image bytes and break stdin decoding.
-    if !std::io::stdin().is_terminal() {
+    if !io::stdin().is_terminal() {
         return None;
     }
 
@@ -85,12 +87,13 @@ fn query_terminal_pixel_size() -> Option<(u16, u16)> {
     // Response format: CSI 6 ; height ; width t
     let mut stdout = io::stdout();
     let stdin = io::stdin();
-    let mut stdin = stdin.lock();
+    let stdin = stdin.lock();
 
-    // Save current terminal mode
-    let Ok(_original_mode) = crossterm::terminal::enable_raw_mode() else {
-        return None;
-    };
+    // Preserve a caller's existing raw-mode session.
+    let was_raw = crossterm::terminal::is_raw_mode_enabled().ok()?;
+    if !was_raw {
+        crossterm::terminal::enable_raw_mode().ok()?;
+    }
 
     let result = (|| {
         // Send query
@@ -111,7 +114,6 @@ fn query_terminal_pixel_size() -> Option<(u16, u16)> {
             // Wait up to the remaining time for stdin to become readable.
             #[cfg(unix)]
             {
-                use std::os::unix::io::AsRawFd as _;
                 let remaining = timeout.saturating_sub(start.elapsed());
                 let timeout_ms: i32 = remaining.as_millis().min(i32::MAX as u128) as i32;
                 let mut fds = libc::pollfd {
@@ -129,14 +131,11 @@ fn query_terminal_pixel_size() -> Option<(u16, u16)> {
                 }
             }
 
-            #[cfg(not(unix))]
-            {
-                // Best-effort: without a portable way to poll stdin for readability,
-                // avoid blocking reads and just give up.
-                break;
-            }
-
-            if stdin.read(&mut buf).ok()? != 1 {
+            // Read the same unbuffered descriptor that poll checked. StdinLock's
+            // buffer can prefetch the whole reply, leaving poll waiting while
+            // the remaining bytes sit in that user-space buffer.
+            // SAFETY: the live stdin descriptor and one-byte writable buffer are valid.
+            if unsafe { libc::read(stdin.as_raw_fd(), buf.as_mut_ptr().cast(), buf.len()) } != 1 {
                 break;
             }
 
@@ -164,27 +163,31 @@ fn query_terminal_pixel_size() -> Option<(u16, u16)> {
     })();
 
     // Restore terminal mode
-    let _ = crossterm::terminal::disable_raw_mode();
+    if !was_raw {
+        let _ = crossterm::terminal::disable_raw_mode();
+    }
 
     result
+}
+
+#[cfg(not(unix))]
+fn query_terminal_pixel_size() -> Option<(u16, u16)> {
+    None
 }
 
 pub fn current_terminal_size() -> TerminalSize {
     let (columns, rows) = crossterm::terminal::size().unwrap_or((80, 24));
 
-    // Try to detect pixel dimensions for accurate aspect ratio calculation
+    // CSI 16 t returns one character cell's dimensions, not the whole window.
     let (width_pixels, height_pixels) = query_terminal_pixel_size()
-        .map(|(w, h)| {
-            // Validate the results - some terminals return bogus data
-            // Typical character cells are between 0.3 and 0.7 aspect ratio
-            let cell_ratio = (w as f32 / columns as f32) / (h as f32 / rows as f32);
-            if cell_ratio > 0.3 && cell_ratio < 0.7 {
-                (Some(w), Some(h))
-            } else {
-                // Invalid ratio, ignore
-                (None, None)
+        .and_then(|(width, height)| {
+            let ratio = f32::from(width) / f32::from(height);
+            if !(0.3..0.7).contains(&ratio) {
+                return None;
             }
+            Some((width.checked_mul(columns)?, height.checked_mul(rows)?))
         })
+        .map(|(width, height)| (Some(width), Some(height)))
         .unwrap_or((None, None));
 
     TerminalSize {
@@ -281,14 +284,14 @@ pub fn detect_terminal_backend() -> TerminalBackendGuess {
     }
 
     // Check for Windows Terminal (supports Sixel as of 1.22)
-    if let Ok(program) = env::var("TERM_PROGRAM") {
-        if program.contains("WindowsTerminal") || program.contains("Microsoft.WindowsTerminal") {
-            return TerminalBackendGuess {
-                backend: BackendKind::Sixel,
-                confidence: BackendConfidence::Likely,
-                rationale: "Windows Terminal supports Sixel",
-            };
-        }
+    if let Ok(program) = env::var("TERM_PROGRAM")
+        && (program.contains("WindowsTerminal") || program.contains("Microsoft.WindowsTerminal"))
+    {
+        return TerminalBackendGuess {
+            backend: BackendKind::Sixel,
+            confidence: BackendConfidence::Likely,
+            rationale: "Windows Terminal supports Sixel",
+        };
     }
 
     if env::var("WT_SESSION").is_ok() || env::var("WT_PROFILE_ID").is_ok() {

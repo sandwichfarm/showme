@@ -1,17 +1,152 @@
 use std::fs::File;
 use std::io::{BufReader, Cursor, Read};
 use std::path::{Path, PathBuf};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::Duration;
 
 use image::codecs::gif::GifDecoder;
-use image::{AnimationDecoder, DynamicImage, ImageFormat, ImageReader, RgbaImage};
+use image::{AnimationDecoder, DynamicImage, ImageDecoder, ImageFormat, ImageReader, RgbaImage};
 
 use crate::autocrop;
 use crate::config::RotationMode;
 use crate::error::{Result, RimgError};
 
 #[cfg(feature = "video")]
-use crate::video::{VideoLoader, load_video};
+use crate::video::{VideoLoader, load_video_with_limits};
+
+// Bounds apply to retained decoded RGBA data; native codec working buffers are separate.
+const MAX_INPUT_BYTES: u64 = 256 * 1024 * 1024;
+const MAX_DECODED_BYTES: u64 = 512 * 1024 * 1024;
+const MAX_FRAMES: usize = 1024;
+
+#[derive(Clone, Default)]
+pub(crate) struct LoadLimits {
+    end_frame: Option<usize>,
+    offset: usize,
+    duration: Option<Duration>,
+    cancelled: Option<Arc<AtomicBool>>,
+}
+
+impl LoadLimits {
+    pub(crate) fn check_cancelled(&self) -> Result<()> {
+        if self
+            .cancelled
+            .as_ref()
+            .is_some_and(|flag| flag.load(Ordering::Relaxed))
+        {
+            Err(std::io::Error::from(std::io::ErrorKind::Interrupted).into())
+        } else {
+            Ok(())
+        }
+    }
+
+    fn for_config(config: &crate::config::Config) -> Result<Self> {
+        let max_frames = if config.scroll_animation || config.grid.is_some() {
+            Some(1)
+        } else {
+            config.max_frames
+        };
+        let end_frame = max_frames
+            .map(|count| {
+                config
+                    .frame_offset
+                    .checked_add(count)
+                    .ok_or_else(|| RimgError::other("frame offset plus frame count is too large"))
+            })
+            .transpose()?;
+        Ok(Self {
+            end_frame,
+            offset: config.frame_offset,
+            duration: config.max_duration,
+            cancelled: None,
+        })
+    }
+}
+
+pub(crate) struct DecodeBudget {
+    limits: LoadLimits,
+    frames: usize,
+    bytes: u64,
+    elapsed: Duration,
+}
+
+impl DecodeBudget {
+    pub(crate) fn new(limits: LoadLimits) -> Self {
+        Self {
+            limits,
+            frames: 0,
+            bytes: 0,
+            elapsed: Duration::ZERO,
+        }
+    }
+
+    pub(crate) fn full(&self) -> bool {
+        self.limits.end_frame.is_some_and(|end| self.frames >= end)
+            || (self.frames >= self.limits.offset
+                && self
+                    .limits
+                    .duration
+                    .is_some_and(|duration| self.elapsed >= duration))
+    }
+
+    pub(crate) fn check_frame(&self, width: u32, height: u32) -> Result<()> {
+        self.limits.check_cancelled()?;
+        check_dimensions(width, height)?;
+        if self.frames >= MAX_FRAMES {
+            return Err(RimgError::other(
+                "media exceeds the 1024-frame decode limit; select a shorter preview with --frames or --duration",
+            ));
+        }
+        if self.bytes + u64::from(width) * u64::from(height) * 4 > MAX_DECODED_BYTES {
+            return Err(RimgError::other(
+                "media exceeds the 512 MiB decoded-data limit; select a shorter preview",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn add(&mut self, frame: &Frame) {
+        self.bytes += u64::from(frame.pixels.width()) * u64::from(frame.pixels.height()) * 4;
+        self.frames += 1;
+        if self.frames > self.limits.offset {
+            self.elapsed = self.elapsed.saturating_add(frame.delay);
+        }
+    }
+}
+
+pub(crate) fn check_dimensions(width: u32, height: u32) -> Result<()> {
+    if width == 0
+        || height == 0
+        || width > 16384
+        || height > 16384
+        || u64::from(width) * u64::from(height) > 64 * 1024 * 1024
+    {
+        return Err(RimgError::other(
+            "image dimensions exceed the limit (16384 per side, 64 megapixels)",
+        ));
+    }
+    Ok(())
+}
+
+fn image_limits() -> image::Limits {
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(16384);
+    limits.max_image_height = Some(16384);
+    limits.max_alloc = Some(256 * 1024 * 1024);
+    limits
+}
+
+fn read_bounded(reader: impl Read) -> Result<Vec<u8>> {
+    let mut data = Vec::new();
+    reader.take(MAX_INPUT_BYTES + 1).read_to_end(&mut data)?;
+    if data.len() as u64 > MAX_INPUT_BYTES {
+        return Err(RimgError::other("input exceeds the 256 MiB byte limit"));
+    }
+    Ok(data)
+}
 
 #[derive(Debug, Clone)]
 pub struct Frame {
@@ -46,31 +181,117 @@ pub fn load_image(
     auto_crop: bool,
     crop_border: u32,
 ) -> Result<ImageSequence> {
+    load_image_inner(
+        path,
+        rotation_mode,
+        auto_crop,
+        crop_border,
+        true,
+        LoadLimits::default(),
+    )
+}
+
+pub(crate) fn load_configured_image(
+    path: &Path,
+    config: &crate::config::Config,
+    cancelled: Option<Arc<AtomicBool>>,
+) -> Result<ImageSequence> {
+    let mut limits = LoadLimits::for_config(config)?;
+    limits.cancelled = cancelled;
+    limits.check_cancelled()?;
+    if config.force_video && config.force_image {
+        return Err(RimgError::other(
+            "force-video and force-image are mutually exclusive",
+        ));
+    }
+    if config.force_video {
+        #[cfg(feature = "video")]
+        {
+            if path.to_str() == Some("-") {
+                return Err(RimgError::other(
+                    "force-video requires a file path; stdin supports images only",
+                ));
+            }
+            return load_video_with_limits(path, limits)?.ok_or_else(|| {
+                RimgError::other(format!("failed to decode video '{}'", path.display()))
+            });
+        }
+        #[cfg(not(feature = "video"))]
+        return Err(RimgError::other(
+            "video decoding requested but the video feature is disabled",
+        ));
+    }
+    load_image_inner(
+        path,
+        config.rotation,
+        config.auto_crop,
+        config.crop_border,
+        !config.force_image,
+        limits,
+    )
+}
+
+fn load_image_inner(
+    path: &Path,
+    rotation_mode: RotationMode,
+    auto_crop: bool,
+    crop_border: u32,
+    probe_video: bool,
+    limits: LoadLimits,
+) -> Result<ImageSequence> {
+    #[cfg(not(feature = "video"))]
+    let _ = probe_video;
     // Handle stdin as special case
     if path.to_str() == Some("-") {
-        return load_from_stdin(rotation_mode, auto_crop, crop_border);
+        return load_from_stdin(rotation_mode, auto_crop, crop_border, limits);
     }
 
     #[cfg(feature = "video")]
     {
-        if VideoLoader::is_video_candidate(path) {
-            if let Some(sequence) = load_video(path)? {
-                return Ok(sequence);
-            }
+        if probe_video
+            && VideoLoader::is_video_candidate(path)
+            && let Some(sequence) = load_video_with_limits(path, limits.clone())?
+        {
+            return Ok(sequence);
         }
     }
 
+    let extension = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let disabled_feature = match extension.as_str() {
+        "qoi" if !cfg!(feature = "qoi") => Some("qoi"),
+        "pdf" if !cfg!(feature = "pdf") => Some("pdf"),
+        "svg" | "svgz" if !cfg!(feature = "svg") => Some("svg"),
+        "mp4" | "mkv" | "mov" | "avi" | "webm" if probe_video && !cfg!(feature = "video") => {
+            Some("video")
+        }
+        _ => None,
+    };
+    if let Some(feature) = disabled_feature {
+        return Err(RimgError::other(format!(
+            "{feature} decoding requested but the {feature} feature is disabled"
+        )));
+    }
+
+    if std::fs::metadata(path)?.len() > MAX_INPUT_BYTES {
+        return Err(RimgError::other("input exceeds the 256 MiB byte limit"));
+    }
     let reader = ImageReader::open(path).map_err(|err| RimgError::ImageOpen {
         path: path.to_path_buf(),
         source: image::ImageError::IoError(err),
     })?;
 
-    let reader = reader
+    let mut reader = reader
         .with_guessed_format()
         .map_err(|err| RimgError::ImageOpen {
             path: path.to_path_buf(),
             source: image::ImageError::IoError(err),
         })?;
+
+    reader.limits(image_limits());
 
     // Check for QOI format first (not supported by image crate's auto-detection)
     #[cfg(feature = "qoi")]
@@ -94,7 +315,7 @@ pub fn load_image(
             .map(|s| s.to_lowercase())
             == Some("pdf".to_string())
         {
-            return load_pdf(path, rotation_mode, auto_crop, crop_border);
+            return load_pdf(path, rotation_mode, auto_crop, crop_border, limits);
         }
     }
 
@@ -121,71 +342,93 @@ pub fn load_image(
     }
 
     match reader.format() {
-        Some(ImageFormat::Gif) => load_gif(path, rotation_mode, auto_crop, crop_border),
+        Some(ImageFormat::Gif) => load_gif(path, rotation_mode, auto_crop, crop_border, limits),
         Some(_) | None => {
             load_static_image(reader.decode(), path, rotation_mode, auto_crop, crop_border)
         }
     }
 }
 
+#[cfg(unix)]
+fn read_stdin(limits: &LoadLimits) -> Result<Vec<u8>> {
+    use std::os::fd::AsRawFd;
+    let stdin = std::io::stdin();
+    let stdin = stdin.lock();
+    let mut data = Vec::new();
+    loop {
+        limits.check_cancelled()?;
+        let mut descriptor = libc::pollfd {
+            fd: stdin.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        // SAFETY: the live descriptor is borrowed for this bounded poll call.
+        let ready = unsafe { libc::poll(&mut descriptor, 1, 25) };
+        if ready < 0 {
+            let error = std::io::Error::last_os_error();
+            if error.kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(error.into());
+        }
+        if ready == 0 {
+            continue;
+        }
+        let mut buffer = [0_u8; 8192];
+        // Read the polled descriptor directly, avoiding StdinLock prefetching.
+        // SAFETY: the borrowed descriptor and writable buffer remain live.
+        let count =
+            unsafe { libc::read(stdin.as_raw_fd(), buffer.as_mut_ptr().cast(), buffer.len()) };
+        if count < 0 {
+            let error = std::io::Error::last_os_error();
+            if error.kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(error.into());
+        }
+        if count == 0 {
+            break;
+        }
+        if data.len() as u64 + count as u64 > MAX_INPUT_BYTES {
+            return Err(RimgError::other("input exceeds the 256 MiB byte limit"));
+        }
+        data.extend_from_slice(&buffer[..count as usize]);
+    }
+    Ok(data)
+}
+
+#[cfg(not(unix))]
+fn read_stdin(limits: &LoadLimits) -> Result<Vec<u8>> {
+    limits.check_cancelled()?;
+    let data = read_bounded(std::io::stdin().lock())?;
+    limits.check_cancelled()?;
+    Ok(data)
+}
+
 fn load_from_stdin(
     rotation_mode: RotationMode,
     auto_crop: bool,
     crop_border: u32,
+    limits: LoadLimits,
 ) -> Result<ImageSequence> {
-    let mut buffer = Vec::new();
-    std::io::stdin()
-        .read_to_end(&mut buffer)
-        .map_err(|err| RimgError::other(format!("failed to read from stdin: {}", err)))?;
-
-    let cursor = Cursor::new(buffer);
-    let reader = ImageReader::new(cursor)
+    let buffer = read_stdin(&limits)?;
+    let mut reader = ImageReader::new(Cursor::new(buffer))
         .with_guessed_format()
         .map_err(|err| {
-            RimgError::other(format!("failed to detect image format from stdin: {}", err))
+            RimgError::other(format!("failed to detect image format from stdin: {err}"))
         })?;
-
+    reader.limits(image_limits());
     let path = PathBuf::from("<stdin>");
     match reader.format() {
         Some(ImageFormat::Gif) => {
-            // For GIF from stdin, need to recreate cursor
-            let data = reader.into_inner().into_inner();
-            let cursor = Cursor::new(data);
             let decoder =
-                GifDecoder::new(BufReader::new(cursor)).map_err(|err| RimgError::ImageOpen {
+                GifDecoder::new(reader.into_inner()).map_err(|source| RimgError::ImageOpen {
                     path: path.clone(),
-                    source: err,
+                    source,
                 })?;
-
-            let frames =
-                decoder
-                    .into_frames()
-                    .collect_frames()
-                    .map_err(|err| RimgError::FrameDecode {
-                        path: path.clone(),
-                        source: err,
-                    })?;
-
-            let frames: Vec<Frame> = frames
-                .into_iter()
-                .map(|frame| {
-                    let delay = frame.delay();
-                    let (numer, denom) = delay.numer_denom_ms();
-                    let millis = if denom == 0 {
-                        0
-                    } else {
-                        ((numer as f32) / (denom as f32)).round() as u64
-                    };
-                    Frame {
-                        pixels: frame.into_buffer(),
-                        delay: Duration::from_millis(millis),
-                    }
-                })
-                .collect();
-
-            Ok(ImageSequence { path, frames })
+            decode_gif(decoder, &path, auto_crop, crop_border, limits)
         }
-        Some(_) | None => load_static_image(
+        _ => load_static_image(
             reader.decode(),
             &path,
             rotation_mode,
@@ -207,11 +450,13 @@ fn load_static_image(
         source: err,
     })?;
 
+    check_dimensions(image.width(), image.height())?;
+
     // Apply EXIF orientation if enabled
-    if rotation_mode == RotationMode::Exif {
-        if let Some(orientation) = read_exif_orientation(path) {
-            image = apply_orientation(image, orientation);
-        }
+    if rotation_mode == RotationMode::Exif
+        && let Some(orientation) = read_exif_orientation(path)
+    {
+        image = apply_orientation(image, orientation);
     }
 
     // Apply cropping: first fixed border, then auto-crop
@@ -232,42 +477,63 @@ fn load_static_image(
 fn load_gif(
     path: &Path,
     _rotation_mode: RotationMode,
-    _auto_crop: bool,
-    _crop_border: u32,
+    auto_crop: bool,
+    crop_border: u32,
+    limits: LoadLimits,
 ) -> Result<ImageSequence> {
-    // Note: EXIF rotation is not applied to GIF animations as they typically don't have EXIF data
-    // Note: Auto-crop is not applied to animations to maintain frame consistency
-    let file = File::open(path)?;
-    let decoder = GifDecoder::new(BufReader::new(file)).map_err(|err| RimgError::ImageOpen {
-        path: path.to_path_buf(),
-        source: err,
-    })?;
-
-    let frames = decoder
-        .into_frames()
-        .collect_frames()
-        .map_err(|err| RimgError::FrameDecode {
+    let decoder = GifDecoder::new(BufReader::new(File::open(path)?)).map_err(|source| {
+        RimgError::ImageOpen {
             path: path.to_path_buf(),
-            source: err,
+            source,
+        }
+    })?;
+    decode_gif(decoder, path, auto_crop, crop_border, limits)
+}
+
+fn decode_gif<R: std::io::BufRead + std::io::Seek>(
+    mut decoder: GifDecoder<R>,
+    path: &Path,
+    auto_crop: bool,
+    crop_border: u32,
+    limits: LoadLimits,
+) -> Result<ImageSequence> {
+    decoder
+        .set_limits(image_limits())
+        .map_err(|source| RimgError::ImageOpen {
+            path: path.to_path_buf(),
+            source,
         })?;
-
-    let frames: Vec<Frame> = frames
-        .into_iter()
-        .map(|frame| {
-            let delay = frame.delay();
-            let (numer, denom) = delay.numer_denom_ms();
-            let millis = if denom == 0 {
-                0
-            } else {
-                ((numer as f32) / (denom as f32)).round() as u64
-            };
-            Frame {
-                pixels: frame.into_buffer(),
-                delay: Duration::from_millis(millis),
-            }
-        })
-        .collect();
-
+    let (width, height) = decoder.dimensions();
+    check_dimensions(width, height)?;
+    let mut budget = DecodeBudget::new(limits);
+    let mut frames = Vec::new();
+    let mut decoded = decoder.into_frames();
+    while !budget.full() {
+        let Some(frame) = decoded.next() else {
+            break;
+        };
+        budget.check_frame(width, height)?;
+        let frame = frame.map_err(|source| RimgError::FrameDecode {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        let (numerator, denominator) = frame.delay().numer_denom_ms();
+        let delay =
+            Duration::from_secs_f64(f64::from(numerator) / f64::from(denominator.max(1)) / 1000.0);
+        let mut pixels = DynamicImage::ImageRgba8(frame.into_buffer());
+        if crop_border > 0 {
+            pixels = autocrop::crop_border(pixels, crop_border);
+        }
+        if auto_crop {
+            pixels = autocrop::auto_crop(pixels);
+        }
+        let frame = Frame {
+            pixels: pixels.into_rgba8(),
+            delay,
+        };
+        budget.add(&frame);
+        frames.push(frame);
+    }
     Ok(ImageSequence {
         path: path.to_path_buf(),
         frames,
@@ -337,6 +603,8 @@ fn load_dds(
         }
     }
 
+    // These arguments mirror the fields of the DDS pixel-format header.
+    #[allow(clippy::too_many_arguments)]
     fn decode_uncompressed(
         data: &[u8],
         data_offset: usize,
@@ -356,7 +624,7 @@ fn load_dds(
             )));
         }
 
-        let bytes_per_pixel = ((rgb_bits + 7) / 8) as usize;
+        let bytes_per_pixel = rgb_bits.div_ceil(8) as usize;
         if !(2..=4).contains(&bytes_per_pixel) {
             return Err(RimgError::other(format!(
                 "DDS: unsupported bytes-per-pixel {bytes_per_pixel}"
@@ -368,6 +636,10 @@ fn load_dds(
         } else {
             width as usize * bytes_per_pixel
         };
+
+        if pitch < width as usize * bytes_per_pixel {
+            return Err(RimgError::other("DDS: pitch is shorter than a pixel row"));
+        }
 
         let required = data_offset.saturating_add(pitch.saturating_mul(height as usize));
         if data.len() < required {
@@ -401,10 +673,7 @@ fn load_dds(
             .ok_or_else(|| RimgError::other("DDS: failed to build image buffer"))
     }
 
-    let data = std::fs::read(path).map_err(|err| RimgError::ImageOpen {
-        path: path.to_path_buf(),
-        source: image::ImageError::IoError(err),
-    })?;
+    let data = read_bounded(File::open(path)?)?;
 
     if data.len() < 4 + DDS_HEADER_LEN || &data[..4] != DDS_MAGIC {
         return Err(RimgError::other(format!(
@@ -412,6 +681,8 @@ fn load_dds(
             path.display()
         )));
     }
+
+    check_dimensions(u32_le(&data, 16)?, u32_le(&data, 12)?)?;
 
     // Try the `image` crate's DDS decoder first (supports DXT variants).
     // If it fails, fall back to uncompressed DDS decoding.
@@ -491,10 +762,10 @@ fn load_dds(
     let mut image = decoded;
 
     // Apply rotation if enabled (DDS typically doesn't have EXIF, but check anyway)
-    if rotation_mode == RotationMode::Exif {
-        if let Some(orientation) = read_exif_orientation(path) {
-            image = apply_orientation(image, orientation);
-        }
+    if rotation_mode == RotationMode::Exif
+        && let Some(orientation) = read_exif_orientation(path)
+    {
+        image = apply_orientation(image, orientation);
     }
 
     // Apply cropping: first fixed border, then auto-crop
@@ -519,10 +790,14 @@ fn load_qoi(
     crop_border: u32,
 ) -> Result<ImageSequence> {
     // Read entire file into memory (QOI decoder needs bytes)
-    let data = std::fs::read(path).map_err(|err| RimgError::ImageOpen {
-        path: path.to_path_buf(),
-        source: image::ImageError::IoError(err),
-    })?;
+    let data = read_bounded(File::open(path)?)?;
+
+    if data.len() >= 14 && &data[..4] == b"qoif" {
+        check_dimensions(
+            u32::from_be_bytes(data[4..8].try_into().unwrap()),
+            u32::from_be_bytes(data[8..12].try_into().unwrap()),
+        )?;
+    }
 
     let (header, data) = qoi::decode_to_vec(&data).map_err(|err| {
         RimgError::other(format!(
@@ -548,10 +823,10 @@ fn load_qoi(
     let mut image = DynamicImage::ImageRgba8(rgba_image);
 
     // Apply rotation if needed (QOI doesn't have EXIF, but we check anyway)
-    if rotation_mode == RotationMode::Exif {
-        if let Some(orientation) = read_exif_orientation(path) {
-            image = apply_orientation(image, orientation);
-        }
+    if rotation_mode == RotationMode::Exif
+        && let Some(orientation) = read_exif_orientation(path)
+    {
+        image = apply_orientation(image, orientation);
     }
 
     // Apply cropping: first fixed border, then auto-crop
@@ -615,16 +890,17 @@ fn load_pdf(
     rotation_mode: RotationMode,
     auto_crop: bool,
     crop_border: u32,
+    limits: LoadLimits,
 ) -> Result<ImageSequence> {
     use pdfium_render::prelude::*;
 
     fn bind_pdfium() -> std::result::Result<Box<dyn PdfiumLibraryBindings>, PdfiumError> {
         let mut candidates: Vec<std::path::PathBuf> = Vec::new();
 
-        if let Ok(path) = std::env::var("SHOWME_PDFIUM_PATH") {
-            if !path.trim().is_empty() {
-                candidates.push(std::path::PathBuf::from(path));
-            }
+        if let Ok(path) = std::env::var("SHOWME_PDFIUM_PATH")
+            && !path.trim().is_empty()
+        {
+            candidates.push(std::path::PathBuf::from(path));
         }
 
         if let Ok(dir) = std::env::var("SHOWME_PDFIUM_DIR") {
@@ -636,13 +912,13 @@ fn load_pdf(
             }
         }
 
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(dir) = exe.parent() {
-                candidates.push(Pdfium::pdfium_platform_library_name_at_path(dir));
-                candidates.push(Pdfium::pdfium_platform_library_name_at_path(
-                    &dir.join("lib"),
-                ));
-            }
+        if let Ok(exe) = std::env::current_exe()
+            && let Some(dir) = exe.parent()
+        {
+            candidates.push(Pdfium::pdfium_platform_library_name_at_path(dir));
+            candidates.push(Pdfium::pdfium_platform_library_name_at_path(
+                &dir.join("lib"),
+            ));
         }
 
         // Backwards-compatible: current working directory.
@@ -669,10 +945,17 @@ fn load_pdf(
     }
 
     // Initialize Pdfium library
-    let pdfium = Pdfium::new(
-        bind_pdfium()
-            .map_err(|err| RimgError::other(format!("Failed to initialize PDF library: {err}")))?,
-    );
+    let pdfium = match bind_pdfium() {
+        Ok(bindings) => Pdfium::new(bindings),
+        // pdfium-render 0.9 promotes bindings into a process-wide OnceCell.
+        // Its Default implementation explicitly reuses initialized bindings.
+        Err(PdfiumError::PdfiumLibraryBindingsAlreadyInitialized) => Pdfium::default(),
+        Err(err) => {
+            return Err(RimgError::other(format!(
+                "Failed to initialize PDF library: {err}"
+            )));
+        }
+    };
 
     // Load the PDF document
     let document = pdfium.load_pdf_from_file(path, None).map_err(|err| {
@@ -687,10 +970,19 @@ fn load_pdf(
         )));
     }
 
-    let mut frames = Vec::with_capacity(page_count as usize);
+    let mut frames = Vec::new();
+    let mut budget = DecodeBudget::new(limits);
 
     // Render each page
     for page_index in 0..page_count {
+        if budget.full() {
+            break;
+        }
+        if page_index >= 128 {
+            return Err(RimgError::other(
+                "PDF exceeds the 128-page decode limit; select fewer pages with --frames",
+            ));
+        }
         let page = document.pages().get(page_index).map_err(|err| {
             RimgError::other(format!(
                 "Failed to get page {} from PDF: {}",
@@ -701,7 +993,8 @@ fn load_pdf(
         // Render at 150 DPI for good quality
         let render_config = PdfRenderConfig::new()
             .set_target_width(2000)
-            .set_maximum_width(4000);
+            .set_maximum_width(4000)
+            .set_maximum_height(4000);
 
         let bitmap = page.render_with_config(&render_config).map_err(|err| {
             RimgError::other(format!("Failed to render PDF page {}: {}", page_index, err))
@@ -711,25 +1004,17 @@ fn load_pdf(
         let width = bitmap.width() as u32;
         let height = bitmap.height() as u32;
 
-        let rgba_data: Vec<u8> = bitmap
-            .as_raw_bytes()
-            .chunks(4)
-            .flat_map(|pixel| {
-                // Pdfium returns BGRA, convert to RGBA
-                [pixel[2], pixel[1], pixel[0], pixel[3]]
-            })
-            .collect();
-
-        let rgba_image = RgbaImage::from_raw(width, height, rgba_data)
-            .ok_or_else(|| RimgError::other("PDF: failed to create image from rendered data"))?;
-
-        let mut image = DynamicImage::ImageRgba8(rgba_image);
+        budget.check_frame(width, height)?;
+        // Let pdfium-render handle bitmap format, stride, and channel order.
+        let mut image = bitmap
+            .as_image()
+            .map_err(|err| RimgError::other(format!("failed to convert PDF page bitmap: {err}")))?;
 
         // Apply rotation if needed (PDFs don't typically have EXIF, but check anyway)
-        if rotation_mode == RotationMode::Exif {
-            if let Some(orientation) = read_exif_orientation(path) {
-                image = apply_orientation(image, orientation);
-            }
+        if rotation_mode == RotationMode::Exif
+            && let Some(orientation) = read_exif_orientation(path)
+        {
+            image = apply_orientation(image, orientation);
         }
 
         // Apply cropping: first fixed border, then auto-crop
@@ -740,7 +1025,9 @@ fn load_pdf(
             image = autocrop::auto_crop(image);
         }
 
-        frames.push(Frame::single(image.to_rgba8()));
+        let frame = Frame::single(image.to_rgba8());
+        budget.add(&frame);
+        frames.push(frame);
     }
 
     Ok(ImageSequence {
@@ -759,10 +1046,14 @@ fn load_svg(
     use resvg::usvg;
 
     // Read SVG file
-    let svg_data = std::fs::read(path).map_err(|err| RimgError::ImageOpen {
-        path: path.to_path_buf(),
-        source: image::ImageError::IoError(err),
-    })?;
+    let svg_data = read_bounded(File::open(path)?)?;
+
+    // Bound decompressed SVGZ bytes before passing them to the XML parser.
+    let svg_data = if svg_data.starts_with(&[0x1f, 0x8b]) {
+        read_bounded(flate2::read::GzDecoder::new(svg_data.as_slice()))?
+    } else {
+        svg_data
+    };
 
     // Parse SVG
     let options = usvg::Options::default();
@@ -783,6 +1074,8 @@ fn load_svg(
     let width = (size.width() * scale) as u32;
     let height = (size.height() * scale) as u32;
 
+    check_dimensions(width, height)?;
+
     // Create pixmap for rendering
     let mut pixmap = resvg::tiny_skia::Pixmap::new(width, height)
         .ok_or_else(|| RimgError::other("SVG: failed to create pixmap for rendering"))?;
@@ -800,10 +1093,10 @@ fn load_svg(
     let mut image = DynamicImage::ImageRgba8(rgba_image);
 
     // Apply rotation if needed (SVGs don't have EXIF, but check anyway)
-    if rotation_mode == RotationMode::Exif {
-        if let Some(orientation) = read_exif_orientation(path) {
-            image = apply_orientation(image, orientation);
-        }
+    if rotation_mode == RotationMode::Exif
+        && let Some(orientation) = read_exif_orientation(path)
+    {
+        image = apply_orientation(image, orientation);
     }
 
     // Apply cropping: first fixed border, then auto-crop
@@ -818,4 +1111,43 @@ fn load_svg(
         path: path.to_path_buf(),
         frames: vec![Frame::single(image.to_rgba8())],
     })
+}
+
+#[cfg(test)]
+mod orientation_tests {
+    use super::*;
+
+    #[test]
+    fn all_eight_exif_transforms_move_pixels_to_expected_coordinates() {
+        let pixels =
+            RgbaImage::from_fn(3, 2, |x, y| image::Rgba([(y * 3 + x + 1) as u8, 0, 0, 255]));
+        let cases = [
+            (1, (3, 2), vec![1, 2, 3, 4, 5, 6]),
+            (2, (3, 2), vec![3, 2, 1, 6, 5, 4]),
+            (3, (3, 2), vec![6, 5, 4, 3, 2, 1]),
+            (4, (3, 2), vec![4, 5, 6, 1, 2, 3]),
+            (5, (2, 3), vec![1, 4, 2, 5, 3, 6]),
+            (6, (2, 3), vec![4, 1, 5, 2, 6, 3]),
+            (7, (2, 3), vec![6, 3, 5, 2, 4, 1]),
+            (8, (2, 3), vec![3, 6, 2, 5, 1, 4]),
+        ];
+        for (orientation, dimensions, expected) in cases {
+            let transformed =
+                apply_orientation(DynamicImage::ImageRgba8(pixels.clone()), orientation)
+                    .into_rgba8();
+            assert_eq!(
+                transformed.dimensions(),
+                dimensions,
+                "orientation {orientation}"
+            );
+            assert_eq!(
+                transformed
+                    .pixels()
+                    .map(|pixel| pixel[0])
+                    .collect::<Vec<_>>(),
+                expected,
+                "orientation {orientation}"
+            );
+        }
+    }
 }

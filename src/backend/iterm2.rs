@@ -14,41 +14,33 @@ pub struct ITerm2Backend;
 impl ITerm2Backend {
     fn build_chunks(&self, data: &[u8], width_cells: u32, height_cells: u32) -> Vec<String> {
         let chunks = Base64Chunks::new(data, BASE64_CHUNK);
-        let total = chunks.len();
-        let mut lines = Vec::with_capacity(total.max(1));
-        let avg_chunk = super::chunk_util::average_chunk_len(&chunks);
-        let in_tmux = tmux::in_multiplexer();
-
-        for (idx, chunk) in (&chunks).into_iter().enumerate() {
-            let more = idx + 1 < total;
-
-            let mut line = String::with_capacity(24 + avg_chunk);
-            line.push_str("\x1b]1337;File=");
-            if idx == 0 {
-                line.push_str(&format!(
-                    "inline=1;size={};width={};height={};preserveAspectRatio=1",
-                    data.len(),
-                    width_cells.max(1),
-                    height_cells.max(1)
-                ));
-            } else {
-                line.push_str("inline=1");
+        let arguments = format!(
+            "inline=1;size={};width={};height={};preserveAspectRatio=1",
+            data.len(),
+            width_cells.max(1),
+            height_cells.max(1)
+        );
+        // A File command contains an entire file. Kitty's m=1 continuation flag
+        // is not part of OSC 1337. Use iTerm2 3.5's documented multipart framing
+        // only when a single sequence would exceed the 1 MiB transport limit.
+        let mut lines = if chunks.encoded_len() + arguments.len() + 32 <= 1024 * 1024 {
+            let mut command = format!("\x1b]1337;File={arguments}:");
+            for chunk in &chunks {
+                command.push_str(chunk);
             }
-
-            if more {
-                line.push_str(";m=1");
+            command.push('\x07');
+            vec![command]
+        } else {
+            let mut commands = Vec::with_capacity(chunks.len() + 2);
+            commands.push(format!("\x1b]1337;MultipartFile={arguments}\x07"));
+            for chunk in &chunks {
+                commands.push(format!("\x1b]1337;FilePart={chunk}\x07"));
             }
-
-            line.push(':');
-            line.push_str(chunk);
-            line.push('\x07');
-
-            // Wrap in tmux DCS passthrough if needed
-            if in_tmux {
-                line = tmux::wrap_for_tmux(&line);
-            }
-
-            lines.push(line);
+            commands.push("\x1b]1337;FileEnd\x07".into());
+            commands
+        };
+        for line in &mut lines {
+            *line = tmux::wrap_if_needed(line);
         }
 
         lines

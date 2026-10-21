@@ -6,8 +6,8 @@ use crate::error::Result;
 use crate::image::Frame;
 use crate::tmux;
 
-// timg uses 3072 raw bytes which encodes to 4096 base64 bytes
-const BASE64_CHUNK: usize = 3072;
+// Kitty permits at most 4096 base64 bytes in each APC graphics payload.
+const BASE64_CHUNK: usize = 4096;
 
 #[derive(Debug, Default)]
 pub struct KittyBackend;
@@ -63,7 +63,7 @@ impl KittyBackend {
 
             // Wrap in tmux DCS passthrough if needed
             if in_tmux {
-                line = tmux::wrap_for_tmux(&line);
+                line = tmux::wrap_if_needed(&line);
             }
 
             lines.push(line);
