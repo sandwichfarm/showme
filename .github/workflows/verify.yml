@@ -58,12 +58,17 @@ jobs:
           target: ${{ matrix.target }}
           features: ${{ matrix.features }}
       # Cache downloads only: every job compiles into an empty target directory.
+      - name: Cache feature identity
+        id: cache-features
+        env:
+          TEST_FEATURES: ${{ matrix.features }}
+        run: echo "value=${TEST_FEATURES//,/-}" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: cargo-${{ runner.os }}-${{ matrix.target }}-${{ matrix.rust }}-${{ matrix.features }}-${{ hashFiles('Cargo.lock') }}
+          key: cargo-${{ runner.os }}-${{ matrix.target }}-${{ matrix.rust }}-${{ steps.cache-features.outputs.value }}-${{ hashFiles('Cargo.lock') }}
       - name: Portable media features
         run: cargo test --locked --no-default-features --features unicode,kitty,iterm2,qoi,pdf,svg -- --include-ignored
       - name: Advertised native features
@@ -92,10 +97,15 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
       - run: python3 -m unittest discover -s scripts -p 'test_*.py'
-      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
-        with:
-          tool: actionlint@1.7.12
-      - run: actionlint
+      - name: Pinned workflow linter
+        run: |
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          curl --fail --location --silent --show-error \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+            --output "$archive"
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $archive" | sha256sum --check
+          tar -xzf "$archive" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint"
 
   coverage:
     runs-on: ubuntu-24.04
